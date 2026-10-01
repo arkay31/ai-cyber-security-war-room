@@ -86,6 +86,7 @@ export default function IncidentDetailPage({
   const [verifying, setVerifying] = useState(false);
   const [verificationList, setVerificationList] = useState<VerificationRequestItem[]>([]);
   const [copiedChallengeId, setCopiedChallengeId] = useState<string | null>(null);
+  const [showHistory, setShowHistory] = useState(false);
 
   // Response Engine state
   const [responseActions, setResponseActions] = useState<ResponseActionItem[]>([]);
@@ -220,6 +221,24 @@ export default function IncidentDetailPage({
     } catch (e: any) {
       console.error("Decision submission failed:", e);
       alert(`Failed to submit decision: ${e.message || "Invalid state transition"}`);
+    } finally {
+      setDecisionSubmitting(false);
+    }
+  };
+
+  const handleDirectAnalystDecision = async (newStatus: string, reason: string) => {
+    try {
+      setDecisionSubmitting(true);
+      await api.makeDecision(incidentId, {
+        status: newStatus,
+        action_notes: reason,
+        actor: "lead_soc_analyst",
+      });
+      setSelectedStatus(newStatus);
+      await loadIncident();
+    } catch (e: any) {
+      console.error("Direct decision failed:", e);
+      alert(`Failed to update status to ${newStatus}: ${e.message || "Invalid state transition"}`);
     } finally {
       setDecisionSubmitting(false);
     }
@@ -463,23 +482,25 @@ export default function IncidentDetailPage({
                   </p>
                 </div>
               ) : (
-                <div className="space-y-3">
-                  {verificationList.map((vr) => {
-                    const isConfirmed = vr.status === "CONFIRMED";
-                    const isDenied = vr.status === "DENIED";
-                    const isPending = vr.status === "PENDING";
-                    const isExpired = vr.status === "EXPIRED";
+                (() => {
+                  const activeVr = verificationList[0];
+                  const previousVrs = verificationList.slice(1);
+                  const isConfirmed = activeVr.status === "CONFIRMED";
+                  const isDenied = activeVr.status === "DENIED";
+                  const isPending = activeVr.status === "PENDING";
+                  const isExpired = activeVr.status === "EXPIRED";
 
-                    return (
+                  return (
+                    <div className="space-y-4">
+                      {/* Active Challenge Card */}
                       <div
-                        key={vr.id}
                         className={`rounded-xl border p-4 transition ${
                           isConfirmed
                             ? "border-emerald-500/30 bg-emerald-950/20"
                             : isDenied
                             ? "border-red-500/30 bg-red-950/20"
                             : isExpired
-                            ? "border-zinc-800 bg-zinc-900/40 opacity-70"
+                            ? "border-zinc-800 bg-zinc-900/40 opacity-80"
                             : "border-purple-500/30 bg-purple-950/20"
                         }`}
                       >
@@ -492,29 +513,29 @@ export default function IncidentDetailPage({
                                   : isDenied
                                   ? "bg-red-500/20 text-red-400 border border-red-500/30"
                                   : isExpired
-                                  ? "bg-zinc-800 text-zinc-400"
+                                  ? "bg-amber-500/20 text-amber-400 border border-amber-500/30"
                                   : "bg-purple-500/20 text-purple-400 border border-purple-500/30 animate-pulse"
                               }`}
                             >
-                              CHALLENGE: {vr.status}
+                              CHALLENGE: {activeVr.status}
                             </span>
                             <span className="text-xs text-zinc-300 font-mono">
-                              User: <strong>{vr.user_id}</strong> • ID: {vr.challenge_id}
+                              Target User: <strong>{activeVr.user_id}</strong> • Token: {activeVr.challenge_id}
                             </span>
                           </div>
 
-                          {/* Demo Verification Link Actions */}
+                          {/* Quick Link & Verification Portal Actions */}
                           <div className="flex items-center gap-2">
                             <button
-                              onClick={() => handleCopyLink(vr.challenge_id)}
+                              onClick={() => handleCopyLink(activeVr.challenge_id)}
                               className="flex items-center gap-1 rounded bg-zinc-900 border border-zinc-700 px-2 py-1 text-[11px] text-zinc-300 hover:text-white"
                             >
                               <Copy className="h-3 w-3" />
-                              <span>{copiedChallengeId === vr.challenge_id ? "Copied!" : "Copy Link"}</span>
+                              <span>{copiedChallengeId === activeVr.challenge_id ? "Copied!" : "Copy Link"}</span>
                             </button>
 
                             <Link
-                              href={`/verify/${vr.challenge_id}`}
+                              href={`/verify/${activeVr.challenge_id}`}
                               target="_blank"
                               className="flex items-center gap-1 rounded bg-emerald-600 hover:bg-emerald-500 text-white px-2.5 py-1 text-[11px] font-semibold transition"
                             >
@@ -525,75 +546,159 @@ export default function IncidentDetailPage({
                         </div>
 
                         <p className="mt-2 text-xs text-zinc-300 bg-zinc-950/60 p-2.5 rounded-lg border border-zinc-800/80">
-                          <strong>Activity Presented:</strong> {vr.activity_summary}
+                          <strong>Activity Presented:</strong> {activeVr.activity_summary}
                         </p>
 
                         {/* Outcomes & Decision Pathway for Analyst */}
                         {isConfirmed && (
-                          <div className="mt-3 flex items-center justify-between p-3 rounded-lg bg-emerald-950/40 border border-emerald-500/30">
+                          <div className="mt-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-3.5 rounded-lg bg-emerald-950/40 border border-emerald-500/30">
                             <div>
                               <p className="text-xs font-bold text-emerald-400 flex items-center gap-1.5">
                                 <CheckCircle2 className="h-4 w-4" />
                                 <span>USER CONFIRMED ACTIVITY</span>
                               </p>
-                              <p className="text-[11px] text-zinc-400 mt-0.5">
-                                User verified activity was legitimate. Incident remains open for analyst review.
+                              <p className="text-[11px] text-zinc-300 mt-0.5">
+                                User verified activity was legitimate. Incident status: <span className="font-mono text-emerald-400 font-semibold">USER_CONFIRMED</span> (remains open for analyst review).
                               </p>
                             </div>
-                            <div className="flex gap-2">
+                            <div className="flex items-center gap-2">
                               <button
-                                onClick={() => {
-                                  setSelectedStatus("FALSE_POSITIVE");
-                                  setAnalystNotes("User attested activity was legitimate business operation.");
-                                }}
-                                className="rounded bg-emerald-600 hover:bg-emerald-500 px-2.5 py-1 text-xs font-semibold text-white transition"
+                                onClick={() => handleDirectAnalystDecision("FALSE_POSITIVE", "User attested activity was legitimate business operation.")}
+                                disabled={decisionSubmitting}
+                                className="rounded bg-emerald-600 hover:bg-emerald-500 px-3 py-1.5 text-xs font-bold text-white transition shadow disabled:opacity-50"
                               >
-                                Mark as Legitimate
+                                {decisionSubmitting ? "Updating..." : "MARK AS LEGITIMATE"}
                               </button>
                               <button
-                                onClick={() => {
-                                  setSelectedStatus("INVESTIGATING");
-                                  setAnalystNotes("User confirmed; continuing audit review of child processes.");
-                                }}
-                                className="rounded bg-zinc-800 hover:bg-zinc-700 px-2.5 py-1 text-xs font-medium text-white transition"
+                                onClick={() => handleDirectAnalystDecision("INVESTIGATING", "User confirmed activity; analyst continuing in-depth investigation.")}
+                                disabled={decisionSubmitting}
+                                className="rounded bg-zinc-800 hover:bg-zinc-700 px-3 py-1.5 text-xs font-medium text-white transition border border-zinc-700 disabled:opacity-50"
                               >
-                                Continue Investigation
+                                {decisionSubmitting ? "Updating..." : "CONTINUE INVESTIGATION"}
                               </button>
                             </div>
                           </div>
                         )}
 
                         {isDenied && (
-                          <div className="mt-3 flex items-center justify-between p-3 rounded-lg bg-red-950/40 border border-red-500/30">
+                          <div className="mt-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-3.5 rounded-lg bg-red-950/40 border border-red-500/30">
                             <div>
                               <p className="text-xs font-bold text-red-400 flex items-center gap-1.5">
                                 <XCircle className="h-4 w-4" />
                                 <span>USER DENIED ACTIVITY — COMPROMISE CONFIRMED</span>
                               </p>
                               <p className="text-[11px] text-red-200 mt-0.5">
-                                User indicated account was compromised. Priority elevated to CRITICAL.
+                                User indicated account was compromised. Incident status: <span className="font-mono text-red-400 font-semibold">USER_DENIED</span>. Severity elevated to CRITICAL.
                               </p>
                             </div>
-                            <div className="flex gap-2">
+                            <div className="flex items-center gap-2">
                               <button
                                 onClick={() => handleProposeResponse("ISOLATE_HOST", "User confirmed compromise via verification denial.")}
-                                className="rounded bg-red-600 hover:bg-red-500 px-2.5 py-1 text-xs font-semibold text-white transition"
+                                disabled={proposingAction}
+                                className="rounded bg-red-600 hover:bg-red-500 px-3 py-1.5 text-xs font-bold text-white transition shadow disabled:opacity-50"
                               >
                                 Propose Host Isolation
                               </button>
                               <button
                                 onClick={() => handleProposeResponse("REVOKE_USER_SESSION", "Compromised credentials reported by user.")}
-                                className="rounded bg-orange-600 hover:bg-orange-500 px-2.5 py-1 text-xs font-semibold text-white transition"
+                                disabled={proposingAction}
+                                className="rounded bg-orange-600 hover:bg-orange-500 px-3 py-1.5 text-xs font-bold text-white transition shadow disabled:opacity-50"
                               >
                                 Revoke Session
                               </button>
                             </div>
                           </div>
                         )}
+
+                        {isPending && (
+                          <div className="mt-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-3.5 rounded-lg bg-purple-950/30 border border-purple-500/30">
+                            <div>
+                              <p className="text-xs font-bold text-purple-300 flex items-center gap-1.5">
+                                <Clock className="h-4 w-4 animate-spin" />
+                                <span>AWAITING USER VERIFICATION RESPONSE</span>
+                              </p>
+                              <p className="text-[11px] text-zinc-300 mt-0.5">
+                                Verification challenge dispatched to user. Incident status: <span className="font-mono text-purple-300 font-semibold">AWAITING_USER_VERIFICATION</span>.
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Link
+                                href={`/verify/${activeVr.challenge_id}`}
+                                target="_blank"
+                                className="flex items-center gap-1 rounded bg-purple-600 hover:bg-purple-500 text-white px-3 py-1.5 text-xs font-bold transition shadow"
+                              >
+                                <ExternalLink className="h-3.5 w-3.5" />
+                                <span>Open User Portal</span>
+                              </Link>
+                            </div>
+                          </div>
+                        )}
+
+                        {isExpired && (
+                          <div className="mt-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-3.5 rounded-lg bg-zinc-900 border border-zinc-700">
+                            <div>
+                              <p className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
+                                <AlertTriangle className="h-4 w-4" />
+                                <span>VERIFICATION CHALLENGE EXPIRED</span>
+                              </p>
+                              <p className="text-[11px] text-zinc-400 mt-0.5">
+                                User did not respond within the 15-minute challenge window. Incident status: <span className="font-mono text-amber-300 font-semibold">VERIFICATION_EXPIRED</span>.
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={handleCreateVerification}
+                                disabled={verifying}
+                                className="rounded bg-purple-600 hover:bg-purple-500 px-3 py-1.5 text-xs font-semibold text-white transition disabled:opacity-50"
+                              >
+                                {verifying ? "Creating..." : "Re-Dispatch Challenge"}
+                              </button>
+                              <button
+                                onClick={() => handleDirectAnalystDecision("INVESTIGATING", "Challenge expired; continuing investigation.")}
+                                disabled={decisionSubmitting}
+                                className="rounded bg-zinc-800 hover:bg-zinc-700 px-3 py-1.5 text-xs font-medium text-white transition border border-zinc-700 disabled:opacity-50"
+                              >
+                                Continue Investigation
+                              </button>
+                            </div>
+                          </div>
+                        )}
                       </div>
-                    );
-                  })}
-                </div>
+
+                      {/* Collapsible History for Previous Challenges */}
+                      {previousVrs.length > 0 && (
+                        <div className="border-t border-zinc-800/80 pt-3">
+                          <button
+                            type="button"
+                            onClick={() => setShowHistory(!showHistory)}
+                            className="flex items-center gap-1.5 text-xs text-zinc-400 hover:text-white font-mono transition"
+                          >
+                            {showHistory ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                            <span>Previous Verification History ({previousVrs.length})</span>
+                          </button>
+                          {showHistory && (
+                            <div className="mt-2 space-y-2">
+                              {previousVrs.map((pvr) => (
+                                <div
+                                  key={pvr.id}
+                                  className="flex items-center justify-between p-2.5 rounded-lg bg-zinc-900/50 border border-zinc-800 text-xs font-mono text-zinc-400"
+                                >
+                                  <span>Token: {pvr.challenge_id}</span>
+                                  <span className="rounded px-2 py-0.5 bg-zinc-800 text-zinc-200 text-[10px] font-bold">
+                                    {pvr.status}
+                                  </span>
+                                  <span className="text-[11px] text-zinc-500">
+                                    {new Date(pvr.created_at).toLocaleTimeString()}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()
               )}
             </div>
           </div>

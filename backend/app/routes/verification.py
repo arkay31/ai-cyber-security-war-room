@@ -50,6 +50,16 @@ def create_verification_request(
         f"originating from IP address '{incident.source_ip or 'External Gateway'}'."
     )
 
+    # Expire any existing PENDING verification requests for this incident to maintain 1 active challenge
+    pending_vrs = (
+        db.query(VerificationRequest)
+        .filter(VerificationRequest.incident_id == incident.id, VerificationRequest.status == "PENDING")
+        .all()
+    )
+    for pvr in pending_vrs:
+        pvr.status = "EXPIRED"
+        db.add(pvr)
+
     req = VerificationRequest(
         incident_id=incident.id,
         user_id=target_user,
@@ -198,8 +208,14 @@ def submit_challenge_response(
         raise HTTPException(status_code=404, detail="Verification challenge not found.")
 
     now = datetime.datetime.utcnow()
+    incident = db.query(Incident).filter(Incident.id == req.incident_id).first()
+
     if now > req.expires_at or req.status == "EXPIRED":
         req.status = "EXPIRED"
+        if incident and incident.status == "AWAITING_USER_VERIFICATION":
+            incident.status = "VERIFICATION_EXPIRED"
+            incident.updated_at = now
+            db.add(incident)
         db.commit()
         raise HTTPException(status_code=400, detail="This verification challenge has expired.")
 
@@ -225,7 +241,6 @@ def submit_challenge_response(
     )
     db.add(v_resp)
 
-    incident = db.query(Incident).filter(Incident.id == req.incident_id).first()
     req.status = user_choice
 
     if user_choice == "CONFIRMED":
@@ -249,11 +264,11 @@ def submit_challenge_response(
         db.add(audit)
 
     else:
-        # User denied activity: confirmed compromise! Increase severity and risk score
+        # User denied activity: confirmed compromise! Escalate severity to CRITICAL and risk score to 100.0
         if incident:
             incident.status = "USER_DENIED"
             incident.severity = "CRITICAL"
-            incident.risk_score = min(100.0, incident.risk_score + 15.0)
+            incident.risk_score = 100.0
             incident.updated_at = now
             db.add(incident)
 

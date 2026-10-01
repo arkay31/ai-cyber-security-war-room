@@ -171,10 +171,10 @@ def test_ai_analyst_investigation():
 
 
 # ============================================================
-# 7. User Verification Workflow Tests
+# 7. User Verification Workflow Tests (4 States: PENDING, CONFIRMED, DENIED, EXPIRED)
 # ============================================================
-def test_user_verification_challenge_lifecycle():
-    """Test full cycle: dispatch -> inspect -> confirm / deny."""
+def test_verification_pending_state():
+    """Test 1: Verification challenge in PENDING state."""
     with SessionLocal() as db:
         inc = db.query(Incident).first()
         assert inc is not None
@@ -200,35 +200,122 @@ def test_user_verification_challenge_lifecycle():
     assert pub_data["status"] == "PENDING"
     assert pub_data["is_expired"] is False
 
-    # 3. User responds: CONFIRMED
-    resp_res = client.post(f"/api/verify/{challenge_id}/respond", json={
+    # 3. Incident state reflects AWAITING_USER_VERIFICATION
+    inc_detail = client.get(f"/api/incidents/{inc_id}").json()
+    assert inc_detail["status"] == "AWAITING_USER_VERIFICATION"
+    assert inc_detail["verification_requests"][0]["status"] == "PENDING"
+
+
+def test_verification_confirmed_state():
+    """Test 2: Verification challenge in CONFIRMED state with analyst review."""
+    with SessionLocal() as db:
+        inc = db.query(Incident).first()
+        inc_id = inc.id
+
+    # 1. Create challenge
+    v_res = client.post(f"/api/incidents/{inc_id}/verification", json={
+        "user_id": "mjackson",
+        "activity_summary": "Testing confirmation flow",
+        "delivery_method": "DEMO_PORTAL",
+        "expires_in_minutes": 15
+    })
+    c_id = v_res.json()["challenge_id"]
+
+    # 2. User confirms
+    resp_res = client.post(f"/api/verify/{c_id}/respond", json={
         "response": "CONFIRMED",
         "verification_method": "DEMO_PORTAL"
     })
     assert resp_res.status_code == 200
     assert resp_res.json()["status"] == "CONFIRMED"
 
-    # Verify incident state transitioned to USER_CONFIRMED
+    # 3. Verify incident state transitioned to USER_CONFIRMED and remains open
     inc_detail = client.get(f"/api/incidents/{inc_id}").json()
     assert inc_detail["status"] == "USER_CONFIRMED"
+    assert inc_detail["verification_requests"][0]["status"] == "CONFIRMED"
 
-    # 4. Test Denial on a fresh challenge
-    v_res2 = client.post(f"/api/incidents/{inc_id}/verification", json={
-        "user_id": "mjackson",
-        "activity_summary": "Second challenge for denial test"
+    # 4. Analyst reviews and marks as legitimate (FALSE_POSITIVE)
+    dec_res = client.post(f"/api/incidents/{inc_id}/decision", json={
+        "status": "FALSE_POSITIVE",
+        "action_notes": "Marked legitimate following user confirmation.",
+        "actor": "lead_analyst"
     })
-    c2_id = v_res2.json()["challenge_id"]
+    assert dec_res.status_code == 200
+    assert dec_res.json()["status"] == "FALSE_POSITIVE"
 
-    resp2 = client.post(f"/api/verify/{c2_id}/respond", json={
+
+def test_verification_denied_state():
+    """Test 3: Verification challenge in DENIED state with risk escalation."""
+    with SessionLocal() as db:
+        inc = db.query(Incident).first()
+        inc_id = inc.id
+
+    # 1. Create challenge
+    v_res = client.post(f"/api/incidents/{inc_id}/verification", json={
+        "user_id": "mjackson",
+        "activity_summary": "Testing denial compromise flow",
+        "delivery_method": "DEMO_PORTAL",
+        "expires_in_minutes": 15
+    })
+    c_id = v_res.json()["challenge_id"]
+
+    # 2. User denies
+    resp_res = client.post(f"/api/verify/{c_id}/respond", json={
         "response": "DENIED",
         "verification_method": "DEMO_PORTAL"
     })
-    assert resp2.status_code == 200
-    assert resp2.json()["status"] == "DENIED"
+    assert resp_res.status_code == 200
+    assert resp_res.json()["status"] == "DENIED"
 
-    inc_detail2 = client.get(f"/api/incidents/{inc_id}").json()
-    assert inc_detail2["status"] == "USER_DENIED"
-    assert inc_detail2["severity"] == "CRITICAL"
+    # 3. Verify incident escalated to CRITICAL and 100.0 risk score
+    inc_detail = client.get(f"/api/incidents/{inc_id}").json()
+    assert inc_detail["status"] == "USER_DENIED"
+    assert inc_detail["severity"] == "CRITICAL"
+    assert inc_detail["risk_score"] == 100.0
+    assert inc_detail["verification_requests"][0]["status"] == "DENIED"
+
+
+def test_verification_expired_state():
+    """Test 4: Verification challenge in EXPIRED state."""
+    with SessionLocal() as db:
+        inc = db.query(Incident).first()
+        inc_id = inc.id
+
+    # 1. Create challenge
+    v_res = client.post(f"/api/incidents/{inc_id}/verification", json={
+        "user_id": "mjackson",
+        "activity_summary": "Testing expiration flow",
+        "delivery_method": "DEMO_PORTAL",
+        "expires_in_minutes": 15
+    })
+    c_id = v_res.json()["challenge_id"]
+
+    # 2. Artificially set expires_at in the past
+    with SessionLocal() as db:
+        from backend.app.models.verification import VerificationRequest
+        vr = db.query(VerificationRequest).filter(VerificationRequest.challenge_id == c_id).first()
+        vr.expires_at = datetime.datetime.utcnow() - datetime.timedelta(minutes=10)
+        db.commit()
+
+    # 3. Check public challenge endpoint detects expiration
+    pub_res = client.get(f"/api/verify/{c_id}")
+    assert pub_res.status_code == 200
+    pub_data = pub_res.json()
+    assert pub_data["status"] == "EXPIRED"
+    assert pub_data["is_expired"] is True
+
+    # 4. Check incident detail detects expiration
+    inc_detail = client.get(f"/api/incidents/{inc_id}").json()
+    assert inc_detail["status"] == "VERIFICATION_EXPIRED"
+    assert inc_detail["verification_requests"][0]["status"] == "EXPIRED"
+
+    # 5. Responding to expired challenge must fail with HTTP 400
+    fail_res = client.post(f"/api/verify/{c_id}/respond", json={
+        "response": "CONFIRMED",
+        "verification_method": "DEMO_PORTAL"
+    })
+    assert fail_res.status_code == 400
+    assert "expired" in fail_res.json()["detail"].lower()
 
 
 # ============================================================

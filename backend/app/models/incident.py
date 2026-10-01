@@ -24,7 +24,12 @@ class Incident(Base):
     incident_events = relationship("IncidentEvent", back_populates="incident", cascade="all, delete-orphan")
     mitre_mappings = relationship("IncidentMitreMapping", back_populates="incident", cascade="all, delete-orphan")
     audit_logs = relationship("AuditLog", back_populates="incident", cascade="all, delete-orphan")
-    verification_requests = relationship("VerificationRequest", back_populates="incident", cascade="all, delete-orphan")
+    verification_requests = relationship(
+        "VerificationRequest",
+        back_populates="incident",
+        cascade="all, delete-orphan",
+        order_by="desc(VerificationRequest.created_at)"
+    )
     response_actions = relationship("ResponseAction", back_populates="incident", cascade="all, delete-orphan")
 
 

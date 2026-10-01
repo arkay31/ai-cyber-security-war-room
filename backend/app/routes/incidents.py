@@ -9,6 +9,7 @@ from backend.app.models.incident import Incident, IncidentEvent
 from backend.app.models.security_event import SecurityEvent
 from backend.app.models.mitre import MitreTechnique, IncidentMitreMapping
 from backend.app.models.audit_log import AuditLog
+from backend.app.models.verification import VerificationRequest
 from backend.app.schemas.incident import (
     IncidentResponse,
     IncidentDetailResponse,
@@ -33,6 +34,23 @@ def get_incidents(
     limit: int = Query(50, ge=1, le=200),
     db: Session = Depends(get_db)
 ):
+    now = datetime.datetime.utcnow()
+    # Check if any AWAITING_USER_VERIFICATION incident has expired
+    awaiting_incidents = db.query(Incident).filter(Incident.status == "AWAITING_USER_VERIFICATION").all()
+    for inc in awaiting_incidents:
+        pending_vr = (
+            db.query(VerificationRequest)
+            .filter(VerificationRequest.incident_id == inc.id, VerificationRequest.status == "PENDING")
+            .order_by(desc(VerificationRequest.created_at))
+            .first()
+        )
+        if pending_vr and now > pending_vr.expires_at:
+            pending_vr.status = "EXPIRED"
+            inc.status = "VERIFICATION_EXPIRED"
+            inc.updated_at = now
+            db.add(pending_vr)
+            db.add(inc)
+    db.commit()
     query = db.query(Incident)
     if status:
         query = query.filter(Incident.status == status)
@@ -138,7 +156,29 @@ def get_incident_detail(incident_id_or_str: str, db: Session = Depends(get_db)):
         for a in audit_records
     ]
 
-    # Fetch verification requests
+    # Fetch verification requests ordered descending
+    vr_query = (
+        db.query(VerificationRequest)
+        .filter(VerificationRequest.incident_id == incident.id)
+        .order_by(desc(VerificationRequest.created_at))
+        .all()
+    )
+
+    now = datetime.datetime.utcnow()
+    incident_state_changed = False
+    for vr in vr_query:
+        if vr.status == "PENDING" and now > vr.expires_at:
+            vr.status = "EXPIRED"
+            db.add(vr)
+            if incident.status == "AWAITING_USER_VERIFICATION":
+                incident.status = "VERIFICATION_EXPIRED"
+                incident_state_changed = True
+
+    if incident_state_changed:
+        incident.updated_at = now
+        db.add(incident)
+        db.commit()
+
     v_requests = [
         {
             "id": vr.id,
@@ -162,7 +202,7 @@ def get_incident_detail(incident_id_or_str: str, db: Session = Depends(get_db)):
                 for resp in (vr.responses or [])
             ]
         }
-        for vr in (incident.verification_requests or [])
+        for vr in vr_query
     ]
 
     # Fetch response actions

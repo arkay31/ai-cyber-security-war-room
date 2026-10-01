@@ -120,7 +120,7 @@ class ResponseEngine:
                 f"from corporate VLAN. Lateral movement blocked; control plane management channel maintained."
             )
             # Update incident state machine
-            if incident and incident.status in ["Investigating", "NEW", "USER_DENIED", "CONTAINMENT_PENDING"]:
+            if incident and incident.status not in ["RESOLVED", "FALSE_POSITIVE", "CONTAINED"]:
                 incident.status = "CONTAINED"
                 incident.updated_at = now
 
