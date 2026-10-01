@@ -1,0 +1,56 @@
+[
+  {
+    "document_id": "PLAYBOOK-ATO-01",
+    "title": "SOC Playbook: Account Takeover & Compromised Credentials Response",
+    "technique_id": "T1078",
+    "tactic": "Initial Access / Credential Access",
+    "source": "SOC Enterprise Incident Response Framework",
+    "source_type": "remediation_playbook",
+    "content": "Phase 1 - Verification & Scoping: When an account shows abnormal logins followed by privileged activities or sensitive resource access, initiate a User Verification Challenge. If the user confirms the activity was unauthorized or denies performing it, escalate the incident immediately to HIGH/CRITICAL severity. Phase 2 - Containment: (1) Revoke all active session tokens, OAuth grants, and Kerberos tickets for the compromised user account. (2) Temporarily disable or lock the user account in directory services (Active Directory / Okta / LDAP). (3) Block the attacker's source IP address at the perimeter firewall and VPN gateway. Phase 3 - Eradication & Recovery: Force password rotation requiring modern complexity standards, re-enroll MFA credentials on a clean hardware device, and audit all recent access logs for persistence hooks (such as added SSH keys or new API tokens)."
+  },
+  {
+    "document_id": "PLAYBOOK-PRIVESC-02",
+    "title": "SOC Playbook: Host Privilege Escalation & Unauthorized Root Execution",
+    "technique_id": "T1068",
+    "tactic": "Privilege Escalation",
+    "source": "SOC Enterprise Incident Response Framework",
+    "source_type": "remediation_playbook",
+    "content": "Phase 1 - Immediate Containment: Upon detection of unauthorized root/admin privilege escalation (e.g., sudo abuse, exploit execution, or setuid binary tampering), place the affected host into network quarantine / host isolation mode to prevent lateral movement. Phase 2 - Evidence Preservation: Before terminating active processes or restarting the machine, capture volatile evidence: memory dump (RAM), active network socket connections (ss/netstat), open file handles (lsof), and running process trees. Phase 3 - Eradication: Terminate unauthorized parent and child processes. Remove rogue sudoers entries or persistence binaries. Apply security patches for the exploited vulnerability before unisolating the host."
+  },
+  {
+    "document_id": "PLAYBOOK-EXFIL-03",
+    "title": "SOC Playbook: Sensitive Data Collection & Outbound Exfiltration Response",
+    "technique_id": "T1041",
+    "tactic": "Collection / Exfiltration",
+    "source": "SOC Enterprise Incident Response Framework",
+    "source_type": "remediation_playbook",
+    "content": "Phase 1 - Network Egress Severing: When high-volume outbound egress to an unverified external destination or C2 IP is detected following sensitive file access: (1) Immediately deploy edge firewall rule to block traffic to destination IP/domain. (2) Terminate active outbound TCP connections at the proxy/firewall layer. Phase 2 - Endpoint Quarantine: Isolate the source host from the internal network to prevent continuing data collection. Phase 3 - Damage Assessment: Determine specific file paths and database records accessed or archived (e.g. /tmp/*.tgz, *.csv.enc). Calculate total bytes exfiltrated to evaluate regulatory reporting requirements (GDPR/HIPAA/PCI-DSS). Phase 4 - Forensic Snapshot: Collect disk and memory images of the staging host for digital forensics."
+  },
+  {
+    "document_id": "PLAYBOOK-RECON-04",
+    "title": "SOC Playbook: Network Reconnaissance & Port Scanning Remediation",
+    "technique_id": "T1046",
+    "tactic": "Discovery",
+    "source": "SOC Enterprise Incident Response Framework",
+    "source_type": "remediation_playbook",
+    "content": "Phase 1 - Threat Validation: Verify if the scanning source IP is an authorized vulnerability scanner or external attacker. If external or unauthorized internal IP: (1) Block source IP at the edge firewall or network ACL for a minimum 24-hour block period. Phase 2 - Target Hardening: Identify target ports that responded with SYN-ACK during the scan. Verify whether services on those ports require public exposure. Disable unneeded services and restrict access via IP whitelisting or VPN tunnels. Phase 3 - Lateral Monitoring: Review internal NetFlow for any secondary probes originating from the same source subnet or compromised jump hosts."
+  },
+  {
+    "document_id": "PLAYBOOK-WEB-05",
+    "title": "SOC Playbook: Web Application Exploitation & Reverse Shell Containment",
+    "technique_id": "T1190",
+    "tactic": "Initial Access / Execution",
+    "source": "SOC Enterprise Incident Response Framework",
+    "source_type": "remediation_playbook",
+    "content": "Phase 1 - Ingress Neutralization: Block the attacker source IP on the Web Application Firewall (WAF) and load balancer. Enable strict SQL injection and RCE inspection rules on the affected URI route. Phase 2 - Host Containment: Check web server process tree for suspicious interactive child shells (e.g., node, nginx, or httpd spawning /bin/sh or python pty). Terminate malicious process IDs immediately and isolate the container/server instance. Phase 3 - Inspection: Inspect web document root and upload directories for newly created web shells or backdoors. Redeploy web application from verified clean immutable container images."
+  },
+  {
+    "document_id": "PLAYBOOK-FORENSICS-06",
+    "title": "SOC Standard Operating Procedure: Controlled Response & Forensic Evidence Preservation",
+    "technique_id": "T1005",
+    "tactic": "Incident Response Governance",
+    "source": "SOC Enterprise Incident Response Framework",
+    "source_type": "remediation_playbook",
+    "content": "Standard Controlled Response Protocol: In academic and high-reliability production environments, automated disruptive actions must have human-in-the-loop analyst authorization. When executing simulated or live response actions: (1) BLOCK_SOURCE_IP: Restricts attacker network entry points without degrading host operations. (2) ISOLATE_HOST: Disconnects endpoint network interface while preserving management control plane connectivity for triage. (3) REVOKE_USER_SESSION: Terminates active sessions without deleting user data. (4) FORENSIC_SNAPSHOT: Triggers non-destructive snapshot of memory and disk before volatile data is lost. (5) DISABLE_ACCOUNT: Locks authentication provider access pending security review. All actions must be cryptographically recorded in the SOC audit trail."
+  }
+]

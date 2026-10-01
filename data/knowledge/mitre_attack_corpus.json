@@ -1,0 +1,101 @@
+[
+  {
+    "document_id": "MITRE-T1110",
+    "title": "T1110: Brute Force",
+    "technique_id": "T1110",
+    "tactic": "Credential Access",
+    "source": "MITRE ATT&CK Enterprise",
+    "source_type": "mitre_technique",
+    "content": "Adversaries may use brute force techniques to attempt access to accounts when passwords or hashes are unknown. Techniques include password guessing, password spraying, and credential stuffing. Detection involves monitoring repeated authentication failure events (such as event ID 4625 on Windows or 'Failed password' in Linux /var/log/auth.log) within short time intervals, especially from single IP addresses or targeting multiple user accounts. Containment strategies include enforcing rate limiting, temporary account lockouts, dynamic IP blocking at edge firewalls, and requiring mandatory multi-factor authentication (MFA) challenges."
+  },
+  {
+    "document_id": "MITRE-T1078",
+    "title": "T1078: Valid Accounts",
+    "technique_id": "T1078",
+    "tactic": "Initial Access / Defense Evasion / Persistence",
+    "source": "MITRE ATT&CK Enterprise",
+    "source_type": "mitre_technique",
+    "content": "Adversaries may obtain and abuse credentials of existing legitimate accounts to gain Initial Access, Persistence, Privilege Escalation, or Defense Evasion. Because valid accounts bypass perimeter authentication controls and do not generate obvious exploit artifacts, detection requires behavioral baseline analysis (UEBA) for abnormal access times, concurrent logins from geographically distant locations, unexpected source subnets, and atypical service usage. Mitigation requires enforcing strict MFA, immediate session revocation upon anomaly detection, verifying user intent through out-of-band human-in-the-loop verification challenges, and least-privilege role assignment."
+  },
+  {
+    "document_id": "MITRE-T1068",
+    "title": "T1068: Exploitation for Privilege Escalation",
+    "technique_id": "T1068",
+    "tactic": "Privilege Escalation",
+    "source": "MITRE ATT&CK Enterprise",
+    "source_type": "mitre_technique",
+    "content": "Adversaries may exploit software vulnerabilities in operating systems, kernel drivers, or local installed applications to elevate privileges from unprivileged user accounts to root or SYSTEM. Examples include local privilege escalation (LPE) exploits such as CVE-2021-3156 (Baron Samedit sudoers vulnerability) or Dirty COW. Detection relies on monitoring process spawning where child processes have elevated UID/GIDs differing from the parent process, sudden execution of sudo without valid TTY, or unauthorized modifications to sudoers configurations. Response actions require immediately isolating the host, terminating unauthorized root shells, and collecting memory artifacts."
+  },
+  {
+    "document_id": "MITRE-T1005",
+    "title": "T1005: Data from Local System",
+    "technique_id": "T1005",
+    "tactic": "Collection",
+    "source": "MITRE ATT&CK Enterprise",
+    "source_type": "mitre_technique",
+    "content": "Adversaries may search for and harvest sensitive files, proprietary source code, intellectual property, credentials, or PII from local system storage. Methods include automated file searching using find, grep, or PowerShell commands to locate files matching sensitive extensions (.csv, .xlsx, .kdbx, .pem, .sql). Detection involves monitoring high-volume file read activities, access to restricted directories (/var/finance, /etc/shadow, database backups), and archive utilities (tar, zip, 7z) executing in temporary directories (/tmp, C:\\Temp). Remediation involves terminating data-dumping processes, isolating affected storage mounts, and assessing compromised data scope."
+  },
+  {
+    "document_id": "MITRE-T1041",
+    "title": "T1041: Exfiltration Over C2 Channel",
+    "technique_id": "T1041",
+    "tactic": "Exfiltration",
+    "source": "MITRE ATT&CK Enterprise",
+    "source_type": "mitre_technique",
+    "content": "Adversaries may steal data by exfiltrating it over an established Command and Control (C2) channel or encrypted outbound tunnel (such as HTTPS on port 443, DNS tunneling, or SSH). Detection relies on network flow metrics: sudden surges in outbound byte volume, high forward packet counts, abnormal session durations, connections to newly registered domains (NRDs) or suspicious ASNs. Response actions mandate blocking destination IP addresses and domains at the egress firewall/proxy, severing active TCP sessions, and quarantining the internal transmitting endpoint."
+  },
+  {
+    "document_id": "MITRE-T1046",
+    "title": "T1046: Network Service Discovery",
+    "technique_id": "T1046",
+    "tactic": "Discovery",
+    "source": "MITRE ATT&CK Enterprise",
+    "source_type": "mitre_technique",
+    "content": "Adversaries may attempt to enumerate services running on remote hosts and internal subnets to discover vulnerable software versions, open management ports, and network topologies. Common tools include Nmap, masscan, or custom SYN scanners. Detection features high rates of SYN packets without completing the three-way handshake, sequential port connection attempts across short intervals, and ICMP sweep packets. Defense and response involves implementing automated edge firewall IP blocks against scanning source IPs, rate-limiting perimeter SYN packets, and auditing exposed perimeter services."
+  },
+  {
+    "document_id": "MITRE-T1190",
+    "title": "T1190: Exploit Public-Facing Application",
+    "technique_id": "T1190",
+    "tactic": "Initial Access",
+    "source": "MITRE ATT&CK Enterprise",
+    "source_type": "mitre_technique",
+    "content": "Adversaries may attempt to exploit vulnerabilities in Internet-facing software such as web servers, API endpoints, or database management interfaces (e.g., SQL injection, Remote Code Execution, Path Traversal). Detection focuses on web application firewall (WAF) alerts, abnormal query string patterns, high-frequency HTTP 4xx/5xx error responses, and unexpected web server child processes (e.g., www-data spawning /bin/sh or cmd.exe). Containment involves applying virtual WAF patches, blocking attacker IP addresses, and reviewing application access logs for persistent web shells."
+  },
+  {
+    "document_id": "MITRE-T1059",
+    "title": "T1059: Command and Scripting Interpreter",
+    "technique_id": "T1059",
+    "tactic": "Execution",
+    "source": "MITRE ATT&CK Enterprise",
+    "source_type": "mitre_technique",
+    "content": "Adversaries may abuse command and script interpreters (including PowerShell, Bash, Python, Perl, and Windows Cmd) to execute arbitrary commands, download payloads, and orchestrate post-exploitation steps. Detection includes logging script block executions, monitoring interactive shells spawned from web servers or background daemons, and tracking execution of base64-encoded strings or obfuscated commands. Remediation includes terminating unauthorized interpreter PIDs, enabling script execution restrictions, and isolating the host."
+  },
+  {
+    "document_id": "MITRE-T1021",
+    "title": "T1021: Remote Services / Lateral Movement",
+    "technique_id": "T1021",
+    "tactic": "Lateral Movement",
+    "source": "MITRE ATT&CK Enterprise",
+    "source_type": "mitre_technique",
+    "content": "Adversaries may use legitimate credentials to log into remote services such as SSH, RDP, SMB, or WinRM to move laterally through the enterprise network. Detection involves identifying workstation-to-workstation administrative connections, unexpected RDP/SSH sessions from unauthorized subnets, and logins using privileged service accounts outside standard operational hours. Response includes resetting user credentials, terminating unauthorized remote sessions, and segmenting internal subnets."
+  },
+  {
+    "document_id": "MITRE-T1498",
+    "title": "T1498: Network Denial of Service",
+    "technique_id": "T1498",
+    "tactic": "Impact",
+    "source": "MITRE ATT&CK Enterprise",
+    "source_type": "mitre_technique",
+    "content": "Adversaries may perform Network Denial of Service (DoS/DDoS) attacks to degrade or block the availability of targeted servers, applications, or infrastructure. Attacks can be volume-based (UDP floods, ICMP floods) or state-exhaustion (SYN flood, HTTP flood). Detection identifies massive spikes in inbound flow volume, extreme packet rates, and dropped legitimate sessions. Response includes upstream traffic scrubbing, applying BGP Anycast blackholing, rate limiting SYN packets, and blocking malicious reflector ASNs."
+  },
+  {
+    "document_id": "MITRE-T1055",
+    "title": "T1055: Process Injection",
+    "technique_id": "T1055",
+    "tactic": "Privilege Escalation / Defense Evasion",
+    "source": "MITRE ATT&CK Enterprise",
+    "source_type": "mitre_technique",
+    "content": "Adversaries may inject code into legitimate processes in order to evade process-based defenses and elevate privileges. Techniques include DLL injection, ptrace injection, process hollowing, and thread execution hijacking. Detection relies on monitoring cross-process memory write API calls (CreateRemoteThread, ptrace, WriteProcessMemory) and unsigned memory pages inside trusted system processes. Response requires immediately isolating the host and taking a forensic memory snapshot before process termination."
+  }
+]

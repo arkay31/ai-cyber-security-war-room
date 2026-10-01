@@ -1,0 +1,38 @@
+[
+  {
+    "document_id": "GUIDE-INVEST-01",
+    "title": "SOC Investigation Guide: Multi-Stage Attack Chain Correlation",
+    "technique_id": "T1110",
+    "tactic": "Investigation Guidance",
+    "source": "SOC Analyst Field Operations Guide",
+    "source_type": "investigation_guide",
+    "content": "When analyzing correlated security incidents, evaluate the temporal progression across the cyber kill chain: (1) Initial Reconnaissance or Brute Force: Look for clustered failed login attempts followed immediately by a single successful login from the same source IP. (2) Privilege Escalation: Check whether the authenticated user executed commands with elevated privileges (sudo root, su, or exploiting local setuid binaries). (3) Sensitive Collection: Inspect whether the elevated process accessed high-value files (databases, PII directories, keyrings). (4) Exfiltration: Correlate large outbound network transfers occurring within minutes of collection. A multi-stage sequence combining these phases indicates a high-confidence coordinated intrusion rather than an isolated scanning probe."
+  },
+  {
+    "document_id": "GUIDE-INVEST-02",
+    "title": "SOC Investigation Guide: Human-in-the-Loop User Verification Triage",
+    "technique_id": "T1078",
+    "tactic": "Investigation Guidance",
+    "source": "SOC Analyst Field Operations Guide",
+    "source_type": "investigation_guide",
+    "content": "Protocol for User Verification in Identity Incidents: When an incident involves suspicious logins or unexpected administrative activity on a legitimate user account, do not assume compromise immediately without verification. Trigger a User Verification Request presenting the user with an out-of-band challenge ('Did you perform this activity?'). Decision pathways: (1) USER CONFIRMED: If the user explicitly confirms the activity was legitimate (e.g. valid after-hours maintenance or emergency deployment), the incident may be triaged toward resolution or marked as legitimate by the analyst after verifying operational justification. (2) USER DENIED: If the user denies performing the activity, credential compromise is confirmed. Immediately escalate incident severity, recommend session revocation, account lockout, and host containment. (3) VERIFICATION EXPIRED: If the verification window expires without a response, treat the event cautiously as potentially unauthorized and proceed with conservative isolation."
+  },
+  {
+    "document_id": "GUIDE-INVEST-03",
+    "title": "SOC Investigation Guide: ML Threat Detection & Anomaly Score Interpretation",
+    "technique_id": "T1046",
+    "tactic": "Investigation Guidance",
+    "source": "SOC Analyst Field Operations Guide",
+    "source_type": "investigation_guide",
+    "content": "Interpreting Ensemble ML Outputs in SOC Triage: The platform employs dual-engine machine learning: (1) Supervised XGBoost Classifier: Evaluates network flow telemetry against known attack patterns (DDoS, PortScan, Bot, Infiltration, Brute Force). High confidence (>0.85) in non-benign classes indicates signature similarity with trained attack profiles. (2) Unsupervised Isolation Forest: Evaluates feature anomalies without requiring predefined attack labels. An anomaly score exceeding the dynamic threshold identifies behavioral outliers such as unusual port combinations, rare packet sizing, or off-hours transmission rates. When both XGBoost detects an attack class and Isolation Forest flags an anomaly score, incident risk score compounds toward HIGH or CRITICAL."
+  },
+  {
+    "document_id": "GUIDE-INVEST-04",
+    "title": "SOC Investigation Guide: Root Cause Analysis for Privilege Escalation & Data Egress",
+    "technique_id": "T1068",
+    "tactic": "Investigation Guidance",
+    "source": "SOC Analyst Field Operations Guide",
+    "source_type": "investigation_guide",
+    "content": "Analyzing Endpoint Privilege Escalation and Egress telemetry: (1) Sudoers & Vulnerability Checks: Determine the method used to obtain root privileges. Check whether standard sudo privileges were abused or a local kernel exploit was invoked. (2) Process Lineage: Inspect the parent process chain (e.g., sshd -> bash -> sudo -> /bin/bash). If the parent process was an external daemon (sshd, httpd, node), unauthorized remote compromise is highly probable. (3) Outbound Connection Profiling: Match the destination IP and port against threat intelligence feeds. Inspect TLS certificate SNI, DNS query logs, and payload byte counts to determine whether sensitive archives (/tmp/*.tgz) were successfully exfiltrated."
+  }
+]
