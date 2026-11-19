@@ -30,19 +30,30 @@ def get_dashboard_stats(db: Session = Depends(get_db)):
         .scalar()
     ) or 0
 
-    # Incidents by severity
+    ACTIVE_STATUSES = [
+        "INVESTIGATING",
+        "CONTAINED",
+        "AWAITING_USER_VERIFICATION",
+        "USER_CONFIRMED",
+        "USER_DENIED",
+        "CONTAINMENT_PENDING",
+        "NEW",
+        "OPEN",
+    ]
+
+    # Incidents by severity (active incidents)
     critical_incidents = db.query(Incident).filter(
-        Incident.severity == "CRITICAL",
-        Incident.status.in_(["Investigating", "Contained"])
+        func.upper(Incident.severity) == "CRITICAL",
+        func.upper(Incident.status).in_(ACTIVE_STATUSES)
     ).count()
 
     high_incidents = db.query(Incident).filter(
-        Incident.severity == "HIGH",
-        Incident.status.in_(["Investigating", "Contained"])
+        func.upper(Incident.severity) == "HIGH",
+        func.upper(Incident.status).in_(ACTIVE_STATUSES)
     ).count()
 
     active_incidents = db.query(Incident).filter(
-        Incident.status.in_(["Investigating", "Contained"])
+        func.upper(Incident.status).in_(ACTIVE_STATUSES)
     ).count()
 
     # Total anomalous events
@@ -100,7 +111,7 @@ def get_dashboard_stats(db: Session = Depends(get_db)):
             .filter(IncidentMitreMapping.incident_id == inc.id)
             .first()
         )
-        technique = mitre_map.technique_id if mitre_map else "T1078"
+        technique = mitre_map.technique_id if mitre_map else "N/A"
 
         recent_incidents.append({
             "id": inc.incident_id,
@@ -118,7 +129,7 @@ def get_dashboard_stats(db: Session = Depends(get_db)):
 
     return {
         "total_security_events": total_events,
-        "threats_today": threats_count if threats_count > 0 else total_events,
+        "threats_today": threats_count,
         "critical_incidents": critical_incidents,
         "high_severity_incidents": high_incidents,
         "active_incidents": active_incidents,

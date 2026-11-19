@@ -50,7 +50,40 @@ def create_verification_request(
         f"originating from IP address '{incident.source_ip or 'External Gateway'}'."
     )
 
-    # Expire any existing PENDING verification requests for this incident to maintain 1 active challenge
+    # Prevent duplicate active challenges: check if an unexpired PENDING challenge already exists
+    active_challenge = (
+        db.query(VerificationRequest)
+        .filter(
+            VerificationRequest.incident_id == incident.id,
+            VerificationRequest.status == "PENDING",
+            VerificationRequest.expires_at > now
+        )
+        .first()
+    )
+    if active_challenge:
+        if incident.status != "AWAITING_USER_VERIFICATION":
+            incident.status = "AWAITING_USER_VERIFICATION"
+            incident.updated_at = now
+            db.add(incident)
+            db.commit()
+            db.refresh(incident)
+
+        return VerificationRequestResponse(
+            id=active_challenge.id,
+            incident_id=active_challenge.incident_id,
+            user_id=active_challenge.user_id,
+            challenge_id=active_challenge.challenge_id,
+            status=active_challenge.status,
+            activity_summary=active_challenge.activity_summary,
+            requested_by=active_challenge.requested_by,
+            delivery_method=active_challenge.delivery_method,
+            verification_url=f"/verify/{active_challenge.challenge_id}",
+            created_at=active_challenge.created_at,
+            expires_at=active_challenge.expires_at,
+            responses=active_challenge.responses or [],
+        )
+
+    # Expire any legacy/stale PENDING verification requests for this incident
     pending_vrs = (
         db.query(VerificationRequest)
         .filter(VerificationRequest.incident_id == incident.id, VerificationRequest.status == "PENDING")

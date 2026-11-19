@@ -93,6 +93,7 @@ export default function IncidentDetailPage({
   const [proposingAction, setProposingAction] = useState(false);
   const [actionConfirmTarget, setActionConfirmTarget] = useState<number | null>(null);
   const [executingActionId, setExecutingActionId] = useState<number | null>(null);
+  const [actionFeedback, setActionFeedback] = useState<{ message: string; type: "success" | "error" | "info" } | null>(null);
 
   const loadIncident = async () => {
     try {
@@ -141,11 +142,11 @@ export default function IncidentDetailPage({
         delivery_method: "DEMO_PORTAL",
         expires_in_minutes: 15,
       });
-      alert(`User verification request dispatched! Challenge ID: ${req.challenge_id}`);
+      alert(`User verification challenge active! Challenge ID: ${req.challenge_id}`);
       await loadIncident();
     } catch (e: any) {
       console.error("Failed to create verification challenge:", e);
-      alert("Failed to create user verification request.");
+      alert(e.message || "Failed to create user verification request.");
     } finally {
       setVerifying(false);
     }
@@ -161,20 +162,28 @@ export default function IncidentDetailPage({
   const handleProposeResponse = async (actionType: string, defaultReason: string) => {
     try {
       setProposingAction(true);
+      setActionFeedback(null);
       const targetParams: Record<string, any> = {};
       if (incident?.source_ip) targetParams["target_ip"] = incident.source_ip;
       if (incident?.hostname) targetParams["target_host"] = incident.hostname;
       if (incident?.user) targetParams["target_user"] = incident.user;
 
-      await api.proposeResponseAction(incidentId, {
+      const act = await api.proposeResponseAction(incidentId, {
         action: actionType,
         reason: defaultReason,
         parameters: targetParams,
       });
+      setActionFeedback({
+        message: `Action #${act.id} (${actionType}) proposed. Awaiting your approval & execution below.`,
+        type: "success"
+      });
       await loadIncident();
     } catch (e: any) {
       console.error("Failed to propose response action:", e);
-      alert(e.message || "Failed to propose action.");
+      setActionFeedback({
+        message: e.message || "Failed to propose action.",
+        type: "error"
+      });
     } finally {
       setProposingAction(false);
     }
@@ -183,14 +192,22 @@ export default function IncidentDetailPage({
   const handleExecuteResponse = async (actionId: number) => {
     try {
       setExecutingActionId(actionId);
+      setActionFeedback(null);
       await api.executeResponseAction(actionId, {
         notes: "Approved and simulated by Lead SOC Analyst in demonstration console.",
       });
       setActionConfirmTarget(null);
+      setActionFeedback({
+        message: `Response action #${actionId} executed in safe SIMULATION mode. Containment applied.`,
+        type: "success"
+      });
       await loadIncident();
     } catch (e: any) {
       console.error("Execution failed:", e);
-      alert(e.message || "Failed to execute response action.");
+      setActionFeedback({
+        message: e.message || "Failed to execute response action.",
+        type: "error"
+      });
     } finally {
       setExecutingActionId(null);
     }
@@ -198,11 +215,20 @@ export default function IncidentDetailPage({
 
   const handleRejectResponse = async (actionId: number) => {
     try {
-      await api.rejectResponseAction(actionId, { notes: "Cancelled by analyst." });
+      setActionFeedback(null);
+      await api.rejectResponseAction(actionId, { notes: "Deemed unnecessary by lead analyst." });
       setActionConfirmTarget(null);
+      setActionFeedback({
+        message: `Response action #${actionId} cancelled/rejected.`,
+        type: "info"
+      });
       await loadIncident();
     } catch (e: any) {
       console.error("Failed to reject response:", e);
+      setActionFeedback({
+        message: e.message || "Failed to reject response.",
+        type: "error"
+      });
     }
   };
 
@@ -592,20 +618,31 @@ export default function IncidentDetailPage({
                               </p>
                             </div>
                             <div className="flex items-center gap-2">
-                              <button
-                                onClick={() => handleProposeResponse("ISOLATE_HOST", "User confirmed compromise via verification denial.")}
-                                disabled={proposingAction}
-                                className="rounded bg-red-600 hover:bg-red-500 px-3 py-1.5 text-xs font-bold text-white transition shadow disabled:opacity-50"
-                              >
-                                Propose Host Isolation
-                              </button>
-                              <button
-                                onClick={() => handleProposeResponse("REVOKE_USER_SESSION", "Compromised credentials reported by user.")}
-                                disabled={proposingAction}
-                                className="rounded bg-orange-600 hover:bg-orange-500 px-3 py-1.5 text-xs font-bold text-white transition shadow disabled:opacity-50"
-                              >
-                                Revoke Session
-                              </button>
+                              {(() => {
+                                const isHostIsoPending = responseActions.some((a) => a.action === "ISOLATE_HOST" && a.status === "PENDING");
+                                const isHostIsoExecuted = responseActions.some((a) => a.action === "ISOLATE_HOST" && a.status === "EXECUTED");
+                                const isRevokePending = responseActions.some((a) => a.action === "REVOKE_USER_SESSION" && a.status === "PENDING");
+                                const isRevokeExecuted = responseActions.some((a) => a.action === "REVOKE_USER_SESSION" && a.status === "EXECUTED");
+
+                                return (
+                                  <>
+                                    <button
+                                      onClick={() => handleProposeResponse("ISOLATE_HOST", "User confirmed compromise via verification denial.")}
+                                      disabled={proposingAction || isHostIsoPending || isHostIsoExecuted}
+                                      className="rounded bg-red-600 hover:bg-red-500 px-3 py-1.5 text-xs font-bold text-white transition shadow disabled:opacity-50"
+                                    >
+                                      {isHostIsoExecuted ? "Host Isolated" : isHostIsoPending ? "Host Isolation (Pending)" : "Propose Host Isolation"}
+                                    </button>
+                                    <button
+                                      onClick={() => handleProposeResponse("REVOKE_USER_SESSION", "Compromised credentials reported by user.")}
+                                      disabled={proposingAction || isRevokePending || isRevokeExecuted}
+                                      className="rounded bg-orange-600 hover:bg-orange-500 px-3 py-1.5 text-xs font-bold text-white transition shadow disabled:opacity-50"
+                                    >
+                                      {isRevokeExecuted ? "Session Revoked" : isRevokePending ? "Session Revoke (Pending)" : "Revoke Session"}
+                                    </button>
+                                  </>
+                                );
+                              })()}
                             </div>
                           </div>
                         )}
@@ -721,47 +758,89 @@ export default function IncidentDetailPage({
               </div>
             </div>
 
-            {/* Quick Propose Buttons */}
+            {/* Action Feedback Notification */}
+            {actionFeedback && (
+              <div
+                className={`mt-4 rounded-lg p-3 text-xs flex items-center justify-between border ${
+                  actionFeedback.type === "success"
+                    ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-300"
+                    : actionFeedback.type === "error"
+                    ? "bg-red-500/10 border-red-500/30 text-red-300"
+                    : "bg-blue-500/10 border-blue-500/30 text-blue-300"
+                }`}
+              >
+                <span>{actionFeedback.message}</span>
+                <button
+                  onClick={() => setActionFeedback(null)}
+                  className="text-zinc-400 hover:text-white ml-2 text-xs font-mono"
+                >
+                  ✕
+                </button>
+              </div>
+            )}
+
+            {/* Quick Propose Buttons with Duplicate Prevention */}
             <div className="mt-4 flex flex-wrap gap-2">
-              <button
-                onClick={() => handleProposeResponse("ISOLATE_HOST", `Containment for host ${incident.hostname || 'endpoint'}`)}
-                disabled={proposingAction}
-                className="rounded-lg bg-zinc-900 border border-zinc-700 hover:border-red-500 hover:bg-zinc-800 px-3 py-1.5 text-xs text-zinc-200 transition"
-              >
-                + ISOLATE_HOST
-              </button>
+              {(() => {
+                const isIsoPending = responseActions.some((a) => a.action === "ISOLATE_HOST" && a.status === "PENDING");
+                const isIsoExecuted = responseActions.some((a) => a.action === "ISOLATE_HOST" && a.status === "EXECUTED");
 
-              <button
-                onClick={() => handleProposeResponse("BLOCK_SOURCE_IP", `Perimeter block for attacker ${incident.source_ip || 'IP'}`)}
-                disabled={proposingAction}
-                className="rounded-lg bg-zinc-900 border border-zinc-700 hover:border-orange-500 hover:bg-zinc-800 px-3 py-1.5 text-xs text-zinc-200 transition"
-              >
-                + BLOCK_SOURCE_IP
-              </button>
+                const isBlockPending = responseActions.some((a) => a.action === "BLOCK_SOURCE_IP" && a.status === "PENDING");
+                const isBlockExecuted = responseActions.some((a) => a.action === "BLOCK_SOURCE_IP" && a.status === "EXECUTED");
 
-              <button
-                onClick={() => handleProposeResponse("REVOKE_USER_SESSION", `Invalidate active tokens for ${incident.user || 'user'}`)}
-                disabled={proposingAction}
-                className="rounded-lg bg-zinc-900 border border-zinc-700 hover:border-yellow-500 hover:bg-zinc-800 px-3 py-1.5 text-xs text-zinc-200 transition"
-              >
-                + REVOKE_USER_SESSION
-              </button>
+                const isRevokePending = responseActions.some((a) => a.action === "REVOKE_USER_SESSION" && a.status === "PENDING");
+                const isRevokeExecuted = responseActions.some((a) => a.action === "REVOKE_USER_SESSION" && a.status === "EXECUTED");
 
-              <button
-                onClick={() => handleProposeResponse("FORENSIC_SNAPSHOT", `RAM and disk capture on ${incident.hostname || 'host'}`)}
-                disabled={proposingAction}
-                className="rounded-lg bg-zinc-900 border border-zinc-700 hover:border-blue-500 hover:bg-zinc-800 px-3 py-1.5 text-xs text-zinc-200 transition"
-              >
-                + FORENSIC_SNAPSHOT
-              </button>
+                const isSnapPending = responseActions.some((a) => a.action === "FORENSIC_SNAPSHOT" && a.status === "PENDING");
+                const isSnapExecuted = responseActions.some((a) => a.action === "FORENSIC_SNAPSHOT" && a.status === "EXECUTED");
 
-              <button
-                onClick={() => handleProposeResponse("DISABLE_ACCOUNT", `Lock account credentials for ${incident.user || 'user'}`)}
-                disabled={proposingAction}
-                className="rounded-lg bg-zinc-900 border border-zinc-700 hover:border-purple-500 hover:bg-zinc-800 px-3 py-1.5 text-xs text-zinc-200 transition"
-              >
-                + DISABLE_ACCOUNT
-              </button>
+                const isDisablePending = responseActions.some((a) => a.action === "DISABLE_ACCOUNT" && a.status === "PENDING");
+                const isDisableExecuted = responseActions.some((a) => a.action === "DISABLE_ACCOUNT" && a.status === "EXECUTED");
+
+                return (
+                  <>
+                    <button
+                      onClick={() => handleProposeResponse("ISOLATE_HOST", `Containment for host ${incident.hostname || "endpoint"}`)}
+                      disabled={proposingAction || isIsoPending || isIsoExecuted}
+                      className="rounded-lg bg-zinc-900 border border-zinc-700 hover:border-red-500 hover:bg-zinc-800 px-3 py-1.5 text-xs text-zinc-200 transition disabled:opacity-40"
+                    >
+                      {isIsoExecuted ? "✓ ISOLATE_HOST (Executed)" : isIsoPending ? "• ISOLATE_HOST (Pending)" : "+ ISOLATE_HOST"}
+                    </button>
+
+                    <button
+                      onClick={() => handleProposeResponse("BLOCK_SOURCE_IP", `Perimeter block for attacker ${incident.source_ip || "IP"}`)}
+                      disabled={proposingAction || isBlockPending || isBlockExecuted}
+                      className="rounded-lg bg-zinc-900 border border-zinc-700 hover:border-orange-500 hover:bg-zinc-800 px-3 py-1.5 text-xs text-zinc-200 transition disabled:opacity-40"
+                    >
+                      {isBlockExecuted ? "✓ BLOCK_SOURCE_IP (Executed)" : isBlockPending ? "• BLOCK_SOURCE_IP (Pending)" : "+ BLOCK_SOURCE_IP"}
+                    </button>
+
+                    <button
+                      onClick={() => handleProposeResponse("REVOKE_USER_SESSION", `Invalidate active tokens for ${incident.user || "user"}`)}
+                      disabled={proposingAction || isRevokePending || isRevokeExecuted}
+                      className="rounded-lg bg-zinc-900 border border-zinc-700 hover:border-yellow-500 hover:bg-zinc-800 px-3 py-1.5 text-xs text-zinc-200 transition disabled:opacity-40"
+                    >
+                      {isRevokeExecuted ? "✓ REVOKE_USER_SESSION (Executed)" : isRevokePending ? "• REVOKE_USER_SESSION (Pending)" : "+ REVOKE_USER_SESSION"}
+                    </button>
+
+                    <button
+                      onClick={() => handleProposeResponse("FORENSIC_SNAPSHOT", `RAM and disk capture on ${incident.hostname || "host"}`)}
+                      disabled={proposingAction || isSnapPending || isSnapExecuted}
+                      className="rounded-lg bg-zinc-900 border border-zinc-700 hover:border-blue-500 hover:bg-zinc-800 px-3 py-1.5 text-xs text-zinc-200 transition disabled:opacity-40"
+                    >
+                      {isSnapExecuted ? "✓ FORENSIC_SNAPSHOT (Executed)" : isSnapPending ? "• FORENSIC_SNAPSHOT (Pending)" : "+ FORENSIC_SNAPSHOT"}
+                    </button>
+
+                    <button
+                      onClick={() => handleProposeResponse("DISABLE_ACCOUNT", `Lock account credentials for ${incident.user || "user"}`)}
+                      disabled={proposingAction || isDisablePending || isDisableExecuted}
+                      className="rounded-lg bg-zinc-900 border border-zinc-700 hover:border-purple-500 hover:bg-zinc-800 px-3 py-1.5 text-xs text-zinc-200 transition disabled:opacity-40"
+                    >
+                      {isDisableExecuted ? "✓ DISABLE_ACCOUNT (Executed)" : isDisablePending ? "• DISABLE_ACCOUNT (Pending)" : "+ DISABLE_ACCOUNT"}
+                    </button>
+                  </>
+                );
+              })()}
             </div>
 
             {/* List of Proposed / Executed Response Actions */}
@@ -782,17 +861,20 @@ export default function IncidentDetailPage({
                       className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-4"
                     >
                       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                        <div className="flex items-center gap-3">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-mono text-[11px] font-bold text-zinc-400 bg-zinc-800/80 px-2 py-0.5 rounded">
+                            #ACT-{act.id}
+                          </span>
                           <span
                             className={`rounded px-2.5 py-0.5 text-xs font-bold font-mono ${
                               isExecuted
                                 ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
                                 : isPending
                                 ? "bg-yellow-500/20 text-yellow-400 border border-yellow-500/30"
-                                : "bg-zinc-800 text-zinc-500"
+                                : "bg-zinc-800 text-zinc-500 border border-zinc-700"
                             }`}
                           >
-                            {act.status}
+                            {isExecuted ? "EXECUTED [SIMULATED]" : act.status}
                           </span>
                           <span className="font-mono text-xs font-bold text-white">
                             {act.action}
@@ -803,40 +885,60 @@ export default function IncidentDetailPage({
                         </div>
 
                         {/* Analyst Confirmation Controls */}
-                        {isPending && (
-                          <div className="flex items-center gap-2">
-                            {actionConfirmTarget === act.id ? (
-                              <>
-                                <button
-                                  onClick={() => handleExecuteResponse(act.id)}
-                                  disabled={executingActionId === act.id}
-                                  className="rounded bg-emerald-600 hover:bg-emerald-500 px-3 py-1 text-xs font-bold text-white transition"
-                                >
-                                  {executingActionId === act.id ? "Executing..." : "CONFIRM ACTION"}
-                                </button>
-                                <button
-                                  onClick={() => setActionConfirmTarget(null)}
-                                  className="rounded bg-zinc-800 hover:bg-zinc-700 px-3 py-1 text-xs text-zinc-300 transition"
-                                >
-                                  CANCEL
-                                </button>
-                              </>
-                            ) : (
-                              <>
-                                <button
-                                  onClick={() => setActionConfirmTarget(act.id)}
-                                  className="rounded bg-orange-600 hover:bg-orange-500 px-3 py-1 text-xs font-semibold text-white transition"
-                                >
-                                  Approve & Execute
-                                </button>
-                                <button
-                                  onClick={() => handleRejectResponse(act.id)}
-                                  className="rounded bg-zinc-800 hover:bg-zinc-700 px-3 py-1 text-xs text-zinc-400 transition"
-                                >
-                                  Reject
-                                </button>
-                              </>
-                            )}
+                        {isPending && actionConfirmTarget !== act.id && (
+                          <div className="flex items-center gap-2 shrink-0">
+                            <button
+                              onClick={() => setActionConfirmTarget(act.id)}
+                              className="rounded bg-orange-600 hover:bg-orange-500 px-3 py-1 text-xs font-semibold text-white transition shadow"
+                            >
+                              Approve & Execute
+                            </button>
+                            <button
+                              onClick={() => handleRejectResponse(act.id)}
+                              className="rounded bg-zinc-800 hover:bg-zinc-700 px-3 py-1 text-xs text-zinc-400 transition"
+                            >
+                              Reject
+                            </button>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Inline Confirmation Prompt */}
+                      {isPending && actionConfirmTarget === act.id && (
+                        <div className="mt-3 p-3 rounded-lg bg-orange-950/30 border border-orange-500/40 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                          <div className="text-xs text-orange-200">
+                            <strong className="text-orange-300 font-semibold">Simulated Containment Confirmation:</strong> Execute action{" "}
+                            <span className="font-mono font-bold text-white">{act.action}</span> (#ACT-{act.id}) in safe demonstration simulation mode?
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <button
+                              onClick={() => handleExecuteResponse(act.id)}
+                              disabled={executingActionId === act.id}
+                              className="rounded bg-emerald-600 hover:bg-emerald-500 px-3 py-1.5 text-xs font-bold text-white transition shadow disabled:opacity-50"
+                            >
+                              {executingActionId === act.id ? "Executing..." : "CONFIRM EXECUTION"}
+                            </button>
+                            <button
+                              onClick={() => setActionConfirmTarget(null)}
+                              className="rounded bg-zinc-800 hover:bg-zinc-700 px-3 py-1.5 text-xs text-zinc-300 transition"
+                            >
+                              CANCEL
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Metadata tags */}
+                      <div className="mt-2 flex flex-wrap items-center gap-3 text-[11px] text-zinc-500 font-mono">
+                        <span>Proposed: {new Date(act.created_at).toLocaleTimeString()}</span>
+                        <span>Analyst: {act.analyst_id}</span>
+                        {act.parameters && Object.keys(act.parameters).length > 0 && (
+                          <div className="flex flex-wrap gap-1.5">
+                            {Object.entries(act.parameters).map(([k, v]) => (
+                              <span key={k} className="bg-zinc-950 px-1.5 py-0.5 rounded border border-zinc-800 text-zinc-400">
+                                {k}: <strong className="text-zinc-300">{String(v)}</strong>
+                              </span>
+                            ))}
                           </div>
                         )}
                       </div>
@@ -983,17 +1085,33 @@ export default function IncidentDetailPage({
                   </div>
 
                   {investigationResult && (
-                    <span
-                      className={`rounded px-2.5 py-0.5 text-xs font-bold font-mono ${
-                        investigationResult.analysis_mode === "LLM_RAG"
-                          ? "bg-purple-500/20 text-purple-300 border border-purple-500/30"
-                          : investigationResult.analysis_mode === "LLM"
-                          ? "bg-blue-500/20 text-blue-300 border border-blue-500/30"
-                          : "bg-yellow-500/20 text-yellow-300 border border-yellow-500/30"
-                      }`}
-                    >
-                      MODE: {investigationResult.analysis_mode}
-                    </span>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span
+                        className={`rounded px-2.5 py-0.5 text-xs font-bold font-mono border ${
+                          investigationResult.analysis_mode === "LLM_RAG"
+                            ? "bg-purple-500/20 text-purple-300 border-purple-500/30"
+                            : investigationResult.analysis_mode === "LLM"
+                            ? "bg-blue-500/20 text-blue-300 border-blue-500/30"
+                            : "bg-yellow-500/20 text-yellow-300 border-yellow-500/30"
+                        }`}
+                      >
+                        MODE: {investigationResult.analysis_mode}
+                      </span>
+                      <span
+                        className={`rounded px-2.5 py-0.5 text-xs font-bold font-mono border ${
+                          investigationResult.llm_status === "LLM_UNAVAILABLE"
+                            ? "bg-red-500/20 text-red-400 border-red-500/30"
+                            : "bg-emerald-500/20 text-emerald-300 border-emerald-500/30"
+                        }`}
+                      >
+                        LLM: {investigationResult.llm_status || (investigationResult.analysis_mode === "RULE_BASED" ? "LLM_UNAVAILABLE" : "ACTIVE")}
+                      </span>
+                      {investigationResult.llm_model && (
+                        <span className="rounded bg-zinc-900 border border-zinc-800 px-2 py-0.5 text-xs font-mono text-zinc-300">
+                          {investigationResult.llm_model}
+                        </span>
+                      )}
+                    </div>
                   )}
                 </div>
 
@@ -1011,6 +1129,16 @@ export default function IncidentDetailPage({
                   </div>
                 ) : (
                   <div className="mt-4 space-y-4">
+                    {/* Fallback Warning Callout if LLM_UNAVAILABLE */}
+                    {(investigationResult.analysis_mode === "RULE_BASED" || investigationResult.llm_status === "LLM_UNAVAILABLE") && (
+                      <div className="rounded-lg border border-yellow-500/30 bg-yellow-500/10 p-3 text-xs text-yellow-300 flex items-start gap-2.5">
+                        <AlertTriangle className="h-4 w-4 text-yellow-400 shrink-0 mt-0.5" />
+                        <div>
+                          <strong className="font-semibold text-yellow-200">Rule-Based Fallback Active:</strong>{" "}
+                          Local Ollama LLM was unavailable or timed out. Telemetry and playbooks synthesized deterministically. No simulated hallucinated content was injected.
+                        </div>
+                      </div>
+                    )}
                     {/* Summary */}
                     <div>
                       <p className="text-[10px] uppercase font-mono text-zinc-500 tracking-wider">

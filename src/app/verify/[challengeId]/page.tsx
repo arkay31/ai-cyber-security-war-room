@@ -135,7 +135,7 @@ export default function UserVerificationPage({
                   You indicated that you did not authorize this activity.
                 </p>
                 <div className="mt-4 p-3 rounded-lg bg-red-950/20 border border-red-800/40 text-[11px] text-red-300 text-left">
-                  <span className="font-semibold text-red-200">Immediate Containment Action:</span> Incident severity escalated to <span className="font-bold">CRITICAL</span>. Active sessions are queued for revocation by SOC analysts.
+                  <span className="font-semibold text-red-200">Security Escalation:</span> Incident severity escalated to <span className="font-bold">CRITICAL</span>. User denial recorded as a verified compromise signal; simulated containment actions queued for SOC analyst governance.
                 </div>
               </>
             )}

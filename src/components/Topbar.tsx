@@ -11,20 +11,29 @@ export default function Topbar() {
 
   useEffect(() => {
     let isMounted = true;
-    api
-      .getHealth()
-      .then((data) => {
-        if (isMounted) setHealth(data);
-      })
-      .catch(() => {
-        if (isMounted) setHealth(null);
-      });
+
+    const checkHealth = () => {
+      api
+        .getHealth()
+        .then((data) => {
+          if (isMounted) setHealth(data);
+        })
+        .catch(() => {
+          if (isMounted) setHealth(null);
+        });
+    };
+
+    checkHealth();
+    const interval = setInterval(checkHealth, 5000);
+
     return () => {
       isMounted = false;
+      clearInterval(interval);
     };
   }, []);
 
   const handleSeedAttack = async () => {
+    if (seeding || seedSuccess) return;
     try {
       setSeeding(true);
       const res = await api.simulateDemoAttack();

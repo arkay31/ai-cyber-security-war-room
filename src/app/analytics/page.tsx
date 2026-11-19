@@ -91,7 +91,7 @@ export default function AnalyticsPage() {
           </div>
 
           {/* Quick Stats Banner */}
-          <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-5">
               <span className="text-xs uppercase font-medium tracking-wider text-zinc-500">
                 Total Correlated Incidents
@@ -100,7 +100,7 @@ export default function AnalyticsPage() {
                 {data?.total_incidents || 0}
               </p>
               <p className="mt-1 text-xs text-zinc-500">
-                Active & resolved multi-stage investigations
+                Active & resolved multi-stage investigations in database
               </p>
             </div>
 
@@ -114,6 +114,24 @@ export default function AnalyticsPage() {
               <p className="mt-1 text-xs text-zinc-500">
                 Ingested telemetry evaluated through XGBoost & Isolation Forest
               </p>
+            </div>
+          </div>
+
+          {/* Model Architecture & Academic Evaluation Methodology Disclosure */}
+          <div className="mb-8 rounded-xl border border-zinc-800 bg-zinc-950 p-5">
+            <div className="flex items-start gap-3 text-xs text-zinc-300">
+              <ShieldAlert className="h-5 w-5 text-amber-400 shrink-0 mt-0.5" />
+              <div>
+                <h4 className="font-semibold text-white">
+                  Detection Pipeline & Academic Evaluation Methodology
+                </h4>
+                <p className="mt-1 text-zinc-400 leading-relaxed">
+                  Supervised Classifier: <strong className="text-zinc-200">XGBoost</strong> (6 classes: BENIGN, Bot, Brute Force, DDoS, DoS, PortScan) • Unsupervised Anomaly Detection: <strong className="text-zinc-200">Isolation Forest</strong> (contamination: 0.05).
+                </p>
+                <div className="mt-2 rounded bg-amber-500/10 border border-amber-500/20 p-2 text-amber-300 text-[11px] leading-relaxed">
+                  <strong className="font-semibold text-amber-200">Evaluation Caveat:</strong> The reported XGBoost accuracy (99.89%) and Isolation Forest F1 score (93.05%) represent internal development-evaluation metrics evaluated on synthesized network flow features. They are not claimed to be independently validated results on the complete raw CICIDS2017 benchmark dataset.
+                </div>
+              </div>
             </div>
           </div>
 

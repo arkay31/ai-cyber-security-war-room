@@ -85,6 +85,8 @@ class IncidentInvestigateResponse(BaseModel):
     prioritized_recommendations: List[str] = []
     evidence_references: List[Dict[str, Any]] = []
     analyst_warning: Optional[str] = None
+    llm_metrics: Optional[Dict[str, Any]] = None
+    llm_error: Optional[str] = None
     
     # Backward compatibility fields
     investigation_summary: Optional[str] = None

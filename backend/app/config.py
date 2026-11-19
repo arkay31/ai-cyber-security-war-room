@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     EMBEDDING_DIMENSION: int = 384
     OLLAMA_BASE_URL: str = "http://localhost:11434"
     LLM_MODEL: str = "llama3"
+    OLLAMA_TIMEOUT: float = 120.0
     OPENAI_API_KEY: str | None = None
     OPENAI_MODEL: str = "gpt-4o-mini"
 

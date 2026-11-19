@@ -74,9 +74,10 @@ class AIAnalystService:
             lines.append(f"- Isolation Forest: {anom_count}/{len(ml_anomalies)} anomalies (Peak Score: {max_score:.2f})")
 
         lines.append("")
-        lines.append("=== MITRE ATT&CK TECHNIQUES ===")
-        for t in mitre_techs[:4]:
-            lines.append(f"- [{t.technique_id}] {t.name} ({t.tactic})")
+        if mitre_techs:
+            lines.append("=== MITRE ATT&CK TECHNIQUES ===")
+            for t in mitre_techs[:4]:
+                lines.append(f"- [{t.technique_id}] {t.name} ({t.tactic})")
 
         lines.append("")
         lines.append("=== KEY TELEMETRY TIMELINE ===")
@@ -85,13 +86,17 @@ class AIAnalystService:
 
         lines.append("")
         lines.append("=== RETRIEVED PGVECTOR PLAYBOOKS & EVIDENCE ===")
-        for ev in rag_evidence[:3]:
-            lines.append(f"- [{ev.get('document_id')}] {ev.get('title')}: {ev.get('content')[:200]}")
+        if rag_evidence:
+            for ev in rag_evidence[:4]:
+                lines.append(f"- [{ev.get('document_id')}] {ev.get('title')}: {ev.get('content', '')[:350]}")
+        else:
+            lines.append("- (No semantic playbooks retrieved for this incident telemetry)")
 
         lines.append("""
 === TASK ===
 Analyze this security incident as an expert SOC Analyst.
-You MUST output ONLY a valid JSON object matching this schema:
+You MUST output ONLY a valid JSON object matching this schema.
+Keep each recommendation and investigation step concise (under 25 words):
 {
   "incident_summary": "Cautious summary of observed actions and impact",
   "observed_evidence": ["Fact 1", "Fact 2"],
@@ -116,10 +121,13 @@ You MUST output ONLY a valid JSON object matching this schema:
         4. Structured validation with rule-based fallback
         5. Audit logging
         """
-        if isinstance(incident_id_or_str, int):
-            incident = db.query(Incident).filter(Incident.id == incident_id_or_str).first()
+        if isinstance(incident_id_or_str, int) or (isinstance(incident_id_or_str, str) and incident_id_or_str.isdigit()):
+            incident = db.query(Incident).filter(Incident.id == int(incident_id_or_str)).first()
         else:
             incident = db.query(Incident).filter(Incident.incident_id == str(incident_id_or_str)).first()
+
+        if not incident and isinstance(incident_id_or_str, str) and not incident_id_or_str.isdigit():
+            incident = db.query(Incident).filter(Incident.incident_id.ilike(f"%{incident_id_or_str}%")).first()
 
         if not incident:
             return {"error": f"Incident '{incident_id_or_str}' not found", "status": "failed"}
@@ -176,6 +184,10 @@ You MUST output ONLY a valid JSON object matching this schema:
             )
             system_msg = "You are a professional Tier-2 SOC Security Analyst assisting in incident triage and response."
             llm_result = self.llm.generate(prompt=prompt, system_prompt=system_msg, require_json=True)
+        else:
+            logger.warning(
+                f"Ollama daemon or model '{self.llm.model_name}' unavailable at {self.llm.base_url}. Triggering RULE_BASED fallback."
+            )
 
         # 6. Build response according to execution outcome
         if llm_result and llm_result.get("success") and isinstance(llm_result.get("data"), dict):
@@ -184,19 +196,36 @@ You MUST output ONLY a valid JSON object matching this schema:
             analysis_mode = "LLM_RAG" if rag_evidence else "LLM"
             llm_status = analysis_mode
             llm_model = llm_result.get("model", "llama3")
+            llm_metrics = llm_result.get("metrics", {})
+            llm_error = None
 
             inc_summary = parsed.get("incident_summary") or f"Analysis for {incident.incident_id}"
             obs_evidence = parsed.get("observed_evidence", [f"{len(events)} correlated telemetry events analyzed."])
             likely_pattern = parsed.get("likely_attack_pattern") or incident.title
-            m_techs = parsed.get("mitre_techniques", [{"technique_id": t.technique_id, "name": t.name} for t in mitre_techs])
+            m_techs = parsed.get("mitre_techniques") if parsed.get("mitre_techniques") else [
+                {"technique_id": t.technique_id, "name": t.name, "tactic": t.tactic} for t in mitre_techs
+            ]
             root_cause = parsed.get("root_cause_hypothesis", "Initial unauthorized access vector under investigation.")
             conf = float(parsed.get("confidence", 0.88))
             invest_steps = parsed.get("investigation_steps", [])
             prioritized_recs = parsed.get("prioritized_recommendations", [])
-            evidence_refs = parsed.get("evidence_references", [
-                {"document_id": ev["document_id"], "title": ev["title"], "technique_id": ev["technique_id"]}
-                for ev in rag_evidence
-            ])
+            
+            # Format evidence references with full metadata without fabrication
+            if rag_evidence:
+                evidence_refs = [
+                    {
+                        "document_id": ev.get("document_id", "REF-01"),
+                        "title": ev.get("title", "Standard Playbook"),
+                        "technique_id": ev.get("technique_id"),
+                        "similarity_score": round(ev.get("similarity_score", 0.0), 3) if ev.get("similarity_score") else None,
+                        "category": ev.get("category", "Playbook"),
+                        "content_snippet": (ev.get("content", "")[:260] + "...") if len(ev.get("content", "")) > 260 else ev.get("content", "")
+                    }
+                    for ev in rag_evidence
+                ]
+            else:
+                evidence_refs = []
+
             warning = parsed.get("analyst_warning", "Verify user intent via User Verification challenge before executing disruptive containment.")
 
         else:
@@ -204,6 +233,12 @@ You MUST output ONLY a valid JSON object matching this schema:
             analysis_mode = "RULE_BASED"
             llm_status = "LLM_UNAVAILABLE"
             llm_model = None
+            llm_metrics = {}
+            llm_error = llm_result.get("error", "Ollama daemon unreachable or model not found") if llm_result else "Ollama daemon unreachable or model not found"
+
+            logger.warning(
+                f"AI Analyst fallback active: mode={analysis_mode}, llm_status={llm_status}, reason='{llm_error}'"
+            )
 
             obs_evidence = [
                 f"Incident {incident.incident_id} correlates {len(events)} security events across hosts and network flows.",
@@ -213,7 +248,7 @@ You MUST output ONLY a valid JSON object matching this schema:
             ]
 
             likely_pattern = incident.title
-            m_techs = [{"technique_id": t.technique_id, "name": t.name} for t in mitre_techs]
+            m_techs = [{"technique_id": t.technique_id, "name": t.name, "tactic": t.tactic} for t in mitre_techs]
 
             if "failed_login" in event_types or "brute_force" in event_types:
                 root_cause = "Evidence suggests initial access was likely attempted through automated credential brute forcing."
@@ -244,12 +279,23 @@ You MUST output ONLY a valid JSON object matching this schema:
                 "5. [PLAYBOOK-EXFIL-03] Inspect egress NetFlow volume for staged exfiltration."
             ]
 
-            evidence_refs = [
-                {"document_id": ev["document_id"], "title": ev["title"], "technique_id": ev["technique_id"]}
-                for ev in rag_evidence
-            ]
+            if rag_evidence:
+                evidence_refs = [
+                    {
+                        "document_id": ev.get("document_id", "REF-01"),
+                        "title": ev.get("title", "Standard Playbook"),
+                        "technique_id": ev.get("technique_id"),
+                        "similarity_score": round(ev.get("similarity_score", 0.0), 3) if ev.get("similarity_score") else None,
+                        "category": ev.get("category", "Playbook"),
+                        "content_snippet": (ev.get("content", "")[:260] + "...") if len(ev.get("content", "")) > 260 else ev.get("content", "")
+                    }
+                    for ev in rag_evidence
+                ]
+            else:
+                evidence_refs = []
+
             conf = 0.82
-            warning = "Rule-based analysis active: Local Ollama LLM was unavailable. Review telemetry directly and initiate user verification."
+            warning = f"Rule-based analysis active: Local Ollama LLM was unavailable ({llm_error}). Review telemetry directly and initiate user verification."
 
         # Recommended response actions
         rec_actions = [
@@ -261,19 +307,25 @@ You MUST output ONLY a valid JSON object matching this schema:
         ]
 
         # Audit log creation
+        audit_details = {
+            "analysis_mode": analysis_mode,
+            "llm_status": llm_status,
+            "llm_model": llm_model,
+            "events_analyzed": len(events),
+            "mitre_count": len(mitre_techs),
+            "rag_evidence_count": len(rag_evidence),
+            "risk_score": incident.risk_score
+        }
+        if llm_error:
+            audit_details["llm_error"] = llm_error
+        if llm_metrics:
+            audit_details["llm_metrics"] = llm_metrics
+
         audit = AuditLog(
             incident_id=incident.id,
             action="AI_INVESTIGATION_GENERATED",
             actor="ai_analyst_service",
-            details={
-                "analysis_mode": analysis_mode,
-                "llm_status": llm_status,
-                "llm_model": llm_model,
-                "events_analyzed": len(events),
-                "mitre_count": len(mitre_techs),
-                "rag_evidence_count": len(rag_evidence),
-                "risk_score": incident.risk_score
-            }
+            details=audit_details
         )
         db.add(audit)
         db.commit()
@@ -294,6 +346,8 @@ You MUST output ONLY a valid JSON object matching this schema:
             "prioritized_recommendations": prioritized_recs,
             "evidence_references": evidence_refs,
             "analyst_warning": warning,
+            "llm_metrics": llm_metrics,
+            "llm_error": llm_error,
             # Backward compatibility fields
             "investigation_summary": inc_summary,
             "recommended_steps": invest_steps,

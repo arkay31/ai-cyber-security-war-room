@@ -95,8 +95,25 @@ export default function ThreatIntelligencePage() {
 
           {/* Techniques Grid */}
           {loading ? (
-            <div className="p-12 text-center text-sm text-zinc-500">
+            <div className="p-12 text-center text-sm text-zinc-500 font-mono">
               Loading MITRE ATT&CK techniques from PostgreSQL...
+            </div>
+          ) : filtered.length === 0 ? (
+            <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-12 text-center">
+              <Radar className="h-10 w-10 text-zinc-600 mx-auto mb-3" />
+              <h3 className="text-sm font-semibold text-white">No Matching MITRE Techniques</h3>
+              <p className="mt-1 text-xs text-zinc-400 max-w-sm mx-auto">
+                No techniques found matching query &ldquo;{search}&rdquo; {selectedTactic ? `in tactic ${selectedTactic}` : ""}.
+              </p>
+              <button
+                onClick={() => {
+                  setSearch("");
+                  setSelectedTactic("");
+                }}
+                className="mt-4 rounded-lg bg-zinc-900 border border-zinc-700 px-3 py-1.5 text-xs text-zinc-200 hover:bg-zinc-800 transition"
+              >
+                Reset Search & Filters
+              </button>
             </div>
           ) : (
             <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
@@ -131,7 +148,7 @@ export default function ThreatIntelligencePage() {
                     </span>
 
                     <a
-                      href={`https://attack.mitre.org/techniques/${t.technique_id}/`}
+                      href={`https://attack.mitre.org/techniques/${t.technique_id.replace(".", "/")}/`}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="inline-flex items-center gap-1 text-[11px] text-zinc-400 hover:text-emerald-400 transition"

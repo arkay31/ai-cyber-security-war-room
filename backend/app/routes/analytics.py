@@ -16,7 +16,7 @@ router = APIRouter(prefix="/api", tags=["Analytics & Attack Graph & Reports"])
 
 @router.get("/analytics")
 def get_analytics(db: Session = Depends(get_db)):
-    # 1. Attacks by type
+    # 1. Attacks by type from ML detections
     attack_counts = (
         db.query(Detection.predicted_class, func.count(Detection.id))
         .group_by(Detection.predicted_class)
@@ -27,16 +27,24 @@ def get_analytics(db: Session = Depends(get_db)):
         for row in attack_counts if row[0]
     ]
 
-    # 2. Severity distribution
+    # 2. Severity distribution (normalized uppercase)
     sev_counts = (
-        db.query(Incident.severity, func.count(Incident.id))
-        .group_by(Incident.severity)
+        db.query(func.upper(Incident.severity), func.count(Incident.id))
+        .group_by(func.upper(Incident.severity))
         .all()
     )
+    sev_map = {row[0]: row[1] for row in sev_counts if row[0]}
+    # Standardize tiers
+    standard_severities = ["CRITICAL", "HIGH", "MEDIUM", "LOW"]
     severity_distribution = [
-        {"severity": row[0], "count": row[1]}
-        for row in sev_counts
+        {"severity": s, "count": sev_map.get(s, 0)}
+        for s in standard_severities
+        if sev_map.get(s, 0) > 0 or len(sev_map) == 0
     ]
+    # Add any other non-standard severity if present in DB
+    for s, count in sev_map.items():
+        if s not in standard_severities and count > 0:
+            severity_distribution.append({"severity": s, "count": count})
 
     # 3. Anomalies over time
     now = datetime.datetime.utcnow()
@@ -56,15 +64,16 @@ def get_analytics(db: Session = Depends(get_db)):
     detections = db.query(Detection.confidence).all()
     buckets = {"90-100%": 0, "80-89%": 0, "70-79%": 0, "<70%": 0}
     for d in detections:
-        c = d[0] * 100
-        if c >= 90:
-            buckets["90-100%"] += 1
-        elif c >= 80:
-            buckets["80-89%"] += 1
-        elif c >= 70:
-            buckets["70-79%"] += 1
-        else:
-            buckets["<70%"] += 1
+        if d[0] is not None:
+            c = d[0] * 100
+            if c >= 90:
+                buckets["90-100%"] += 1
+            elif c >= 80:
+                buckets["80-89%"] += 1
+            elif c >= 70:
+                buckets["70-79%"] += 1
+            else:
+                buckets["<70%"] += 1
 
     confidence_dist = [{"range": k, "count": v} for k, v in buckets.items()]
 
@@ -82,7 +91,11 @@ def get_analytics(db: Session = Depends(get_db)):
 def get_attack_graph(incident_id: int = Query(None), db: Session = Depends(get_db)):
     """
     Generate graph nodes and edges for React Flow visualization.
-    Nodes: Incident, Attacker IP, Target Host, User, Events, MITRE Techniques.
+    Implements a 4-column structured topology to avoid edge/label overlaps:
+    Col 1 (x=60): Adversary IPs
+    Col 2 (x=400): Correlated Incidents
+    Col 3 (x=760): Target Hosts & Abused Users
+    Col 4 (x=1120): Associated MITRE ATT&CK Techniques
     """
     nodes = []
     edges = []
@@ -91,78 +104,112 @@ def get_attack_graph(incident_id: int = Query(None), db: Session = Depends(get_d
     incidents_query = db.query(Incident)
     if incident_id:
         incidents_query = incidents_query.filter(Incident.id == incident_id)
-    incidents = incidents_query.order_by(desc(Incident.updated_at)).limit(3).all()
+    incidents = incidents_query.order_by(desc(Incident.updated_at)).limit(4).all()
 
-    y_offset = 50
+    y_offset = 60
+    v_spacing = 300
+
     for inc_idx, inc in enumerate(incidents):
+        base_y = y_offset + (inc_idx * v_spacing)
         inc_node_id = f"inc-{inc.id}"
+
+        # Count events for this incident
+        event_count = db.query(IncidentEvent).filter(IncidentEvent.incident_id == inc.id).count()
+
+        # 1. Incident node (Column 2)
         if inc_node_id not in node_ids:
             nodes.append({
                 "id": inc_node_id,
-                "type": "incidentNode",
-                "position": {"x": 350, "y": y_offset + (inc_idx * 280)},
+                "type": "default",
+                "position": {"x": 400, "y": base_y},
                 "data": {
                     "label": inc.incident_id,
                     "title": inc.title,
                     "severity": inc.severity,
                     "risk_score": inc.risk_score,
-                    "type": "incident"
+                    "status": inc.status,
+                    "type": "incident",
+                    "source_ip": inc.source_ip,
+                    "hostname": inc.hostname,
+                    "user": inc.user,
+                    "event_count": event_count,
+                    "summary": inc.summary,
                 }
             })
             node_ids.add(inc_node_id)
 
-        # Attacker IP node
+        # 2. Attacker Source IP node (Column 1)
         if inc.source_ip:
             ip_node_id = f"ip-{inc.source_ip}"
             if ip_node_id not in node_ids:
                 nodes.append({
                     "id": ip_node_id,
-                    "position": {"x": 50, "y": y_offset + (inc_idx * 280)},
-                    "data": {"label": inc.source_ip, "type": "source_ip"}
+                    "position": {"x": 60, "y": base_y},
+                    "data": {
+                        "label": inc.source_ip,
+                        "type": "source_ip",
+                        "title": "Adversary Source IP",
+                        "incident_id": inc.incident_id
+                    }
                 })
                 node_ids.add(ip_node_id)
+
             edges.append({
                 "id": f"edge-{ip_node_id}-{inc_node_id}",
                 "source": ip_node_id,
                 "target": inc_node_id,
-                "label": "originated from",
+                "label": "inbound attack",
                 "animated": True,
             })
 
-        # Target Host / User node
+        # 3. Target Host node (Column 3)
         target_name = inc.hostname or "Internal Host"
         host_node_id = f"host-{target_name}"
         if host_node_id not in node_ids:
             nodes.append({
                 "id": host_node_id,
-                "position": {"x": 680, "y": y_offset + (inc_idx * 280)},
-                "data": {"label": target_name, "type": "target_host"}
+                "position": {"x": 760, "y": base_y},
+                "data": {
+                    "label": target_name,
+                    "type": "target_host",
+                    "title": "Target Endpoint / Asset",
+                    "status": inc.status
+                }
             })
             node_ids.add(host_node_id)
+
         edges.append({
             "id": f"edge-{inc_node_id}-{host_node_id}",
             "source": inc_node_id,
             "target": host_node_id,
-            "label": "targets",
+            "label": "targets host",
         })
 
+        # 4. Abused User node (Column 3 offset)
         if inc.user:
             user_node_id = f"user-{inc.user}"
             if user_node_id not in node_ids:
                 nodes.append({
                     "id": user_node_id,
-                    "position": {"x": 680, "y": y_offset + (inc_idx * 280) + 90},
-                    "data": {"label": f"User: {inc.user}", "type": "user"}
+                    "position": {"x": 760, "y": base_y + 110},
+                    "data": {
+                        "label": f"User: {inc.user}",
+                        "type": "user",
+                        "title": "Compromised Account",
+                        "username": inc.user,
+                        "incident_id": inc.incident_id
+                    }
                 })
                 node_ids.add(user_node_id)
+
             edges.append({
                 "id": f"edge-{inc_node_id}-{user_node_id}",
                 "source": inc_node_id,
                 "target": user_node_id,
-                "label": "abused account",
+                "label": "abused user",
             })
 
-        # MITRE Technique nodes
+        # 5. MITRE Technique nodes (Column 4, stacked vertically)
         mitre_techs = (
             db.query(MitreTechnique)
             .join(IncidentMitreMapping, IncidentMitreMapping.technique_id == MitreTechnique.id)
@@ -174,15 +221,24 @@ def get_attack_graph(incident_id: int = Query(None), db: Session = Depends(get_d
             if tech_node_id not in node_ids:
                 nodes.append({
                     "id": tech_node_id,
-                    "position": {"x": 350 + (t_idx * 160) - 80, "y": y_offset + (inc_idx * 280) + 160},
-                    "data": {"label": f"{tech.technique_id}: {tech.name}", "type": "mitre"}
+                    "position": {"x": 1120, "y": base_y + (t_idx * 75)},
+                    "data": {
+                        "label": f"{tech.technique_id}: {tech.name}",
+                        "technique_id": tech.technique_id,
+                        "name": tech.name,
+                        "tactic": tech.tactic,
+                        "description": tech.description,
+                        "type": "mitre",
+                        "url": f"https://attack.mitre.org/techniques/{tech.technique_id.replace('.', '/')}/"
+                    }
                 })
                 node_ids.add(tech_node_id)
+
             edges.append({
                 "id": f"edge-{inc_node_id}-{tech_node_id}",
                 "source": inc_node_id,
                 "target": tech_node_id,
-                "label": "ATT&CK",
+                "label": tech.tactic or "ATT&CK",
             })
 
     return {"nodes": nodes, "edges": edges}
@@ -218,6 +274,8 @@ def get_incident_reports(db: Session = Depends(get_db)):
             "summary": inc.summary,
             "event_count": len(events),
             "mitre_techniques": [f"{t.technique_id}: {t.name} ({t.tactic})" for t in mitre_techs],
+            "incident_created_at": inc.created_at.isoformat() if inc.created_at else None,
+            "incident_updated_at": inc.updated_at.isoformat() if inc.updated_at else None,
             "generated_at": datetime.datetime.utcnow().isoformat(),
         })
     return reports

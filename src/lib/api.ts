@@ -140,12 +140,28 @@ export interface InvestigationResult {
   incident_summary: string;
   observed_evidence: string[];
   likely_attack_pattern?: string;
-  mitre_techniques?: Array<{ technique_id: string; name: string }>;
+  mitre_techniques?: Array<{ technique_id: string; name: string; tactic?: string }>;
   root_cause_hypothesis?: string;
   investigation_steps: string[];
   prioritized_recommendations: string[];
-  evidence_references: Array<{ document_id: string; title: string; technique_id?: string; relevance?: string }>;
+  evidence_references: Array<{
+    document_id: string;
+    title: string;
+    technique_id?: string;
+    similarity_score?: number;
+    category?: string;
+    content_snippet?: string;
+    relevance?: string;
+  }>;
   analyst_warning?: string;
+  llm_metrics?: {
+    total_duration_sec?: number;
+    tokens_per_second?: number;
+    eval_count?: number;
+    prompt_eval_count?: number;
+    eval_duration_sec?: number;
+  };
+  llm_error?: string;
   // Backward compatibility
   investigation_summary?: string;
   recommended_steps?: string[];
@@ -224,6 +240,8 @@ export interface IncidentReport {
   summary?: string;
   event_count: number;
   mitre_techniques: string[];
+  incident_created_at?: string;
+  incident_updated_at?: string;
   generated_at: string;
 }
 

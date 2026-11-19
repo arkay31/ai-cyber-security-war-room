@@ -24,6 +24,7 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
 
   const loadStats = async () => {
+    if (loading && stats) return;
     try {
       setLoading(true);
       setError(null);
