@@ -1,0 +1,149 @@
+{
+  "model_name": "XGBoost Intrusion Detection",
+  "algorithm": "XGBClassifier",
+  "features": [
+    "Destination Port",
+    "Flow Duration",
+    "Total Fwd Packets",
+    "Total Backward Packets",
+    "Total Length of Fwd Packets",
+    "Total Length of Bwd Packets",
+    "Fwd Packet Length Mean",
+    "Bwd Packet Length Mean",
+    "Flow Bytes/s",
+    "Flow Packets/s",
+    "Flow IAT Mean",
+    "Flow IAT Std",
+    "Fwd Header Length",
+    "Bwd Header Length",
+    "Packet Length Mean",
+    "Packet Length Std",
+    "SYN Flag Count",
+    "ACK Flag Count",
+    "Average Packet Size",
+    "Init_Win_bytes_forward"
+  ],
+  "classes": [
+    "BENIGN",
+    "Bot",
+    "Brute Force",
+    "DDoS",
+    "DoS",
+    "PortScan"
+  ],
+  "accuracy": 0.9988888888888889,
+  "macro_avg_f1": 0.9990409535152399,
+  "weighted_avg_f1": 0.9988867180239777,
+  "confusion_matrix": [
+    [
+      541,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    [
+      0,
+      38,
+      0,
+      0,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      50,
+      0,
+      0,
+      0
+    ],
+    [
+      1,
+      0,
+      0,
+      103,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      0,
+      0,
+      72,
+      0
+    ],
+    [
+      0,
+      0,
+      0,
+      0,
+      0,
+      95
+    ]
+  ],
+  "classification_report": {
+    "BENIGN": {
+      "precision": 0.9981549815498155,
+      "recall": 1.0,
+      "f1-score": 0.9990766389658357,
+      "support": 541.0
+    },
+    "Bot": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1-score": 1.0,
+      "support": 38.0
+    },
+    "Brute Force": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1-score": 1.0,
+      "support": 50.0
+    },
+    "DDoS": {
+      "precision": 1.0,
+      "recall": 0.9903846153846154,
+      "f1-score": 0.9951690821256038,
+      "support": 104.0
+    },
+    "DoS": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1-score": 1.0,
+      "support": 72.0
+    },
+    "PortScan": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1-score": 1.0,
+      "support": 95.0
+    },
+    "accuracy": 0.9988888888888889,
+    "macro avg": {
+      "precision": 0.9996924969249692,
+      "recall": 0.9983974358974358,
+      "f1-score": 0.9990409535152399,
+      "support": 900.0
+    },
+    "weighted avg": {
+      "precision": 0.9988909389093892,
+      "recall": 0.9988888888888889,
+      "f1-score": 0.9988867180239777,
+      "support": 900.0
+    }
+  },
+  "train_samples": 4200,
+  "test_samples": 900,
+  "top_features": [
+    "Total Fwd Packets",
+    "Packet Length Std",
+    "Bwd Packet Length Mean",
+    "Init_Win_bytes_forward",
+    "Packet Length Mean"
+  ],
+  "evaluation_type": "DEVELOPMENT_EVALUATION",
+  "production_benchmark_distinction": "These metrics reflect performance on a stratified development sample derived from the CICIDS2017 schema. In production enterprise environments, real-world network traffic undergoes distribution drift, zero-day evasion, and encrypted payload obfuscation. Continuous monitoring and human-in-the-loop validation remain mandatory."
+}

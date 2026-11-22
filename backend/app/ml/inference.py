@@ -10,7 +10,16 @@ logger = logging.getLogger(__name__)
 
 # From backend/app/ml/inference.py -> backend/app/ml -> backend/app -> backend -> project_root
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-MODELS_DIR = os.path.join(BASE_DIR, "models")
+configured_dir = os.getenv("MODELS_DIR")
+if configured_dir and os.path.exists(configured_dir):
+    MODELS_DIR = configured_dir
+elif os.path.exists(os.path.join(BASE_DIR, "models")):
+    MODELS_DIR = os.path.join(BASE_DIR, "models")
+elif os.path.exists("/app/models"):
+    MODELS_DIR = "/app/models"
+else:
+    MODELS_DIR = os.path.join(BASE_DIR, "models")
+
 XGB_PATH = os.path.join(MODELS_DIR, "xgboost_detector.joblib")
 ENCODER_PATH = os.path.join(MODELS_DIR, "label_encoder.joblib")
 ISO_PATH = os.path.join(MODELS_DIR, "isolation_forest.joblib")
@@ -69,32 +78,50 @@ class ModelInferenceEngine:
         """
         Compute TreeSHAP local feature explanations for an XGBoost classification.
         Identifies exact feature contributions toward the predicted threat class.
+        Uses native XGBoost booster TreeSHAP (0MB extra RAM) with graceful fallback.
         """
         import pandas as pd
         from backend.app.ml.preprocessor import SELECTED_FEATURES
 
-        explainer = self.get_tree_explainer()
-        features = CICIDSPreprocessor.event_to_features(event_dict)
-        features_df = pd.DataFrame(features, columns=SELECTED_FEATURES)
-
-        if explainer is None or self.label_encoder is None:
+        if self.xgb_model is None or self.label_encoder is None:
             return {
                 "top_features": [],
                 "summary": f"Threat classified as {predicted_class} using ensemble heuristic.",
                 "method": "heuristic"
             }
 
-        try:
-            shap_vals = explainer.shap_values(features_df)
-            classes = list(self.label_encoder.classes_)
-            pred_idx = classes.index(predicted_class) if predicted_class in classes else 0
+        features = CICIDSPreprocessor.event_to_features(event_dict)
+        features_df = pd.DataFrame(features, columns=SELECTED_FEATURES)
 
-            if isinstance(shap_vals, np.ndarray) and shap_vals.ndim == 3:
-                class_shaps = shap_vals[0, :, pred_idx]
-            elif isinstance(shap_vals, list):
-                class_shaps = shap_vals[pred_idx][0]
+        try:
+            # 1. Prefer fast native XGBoost TreeSHAP (avoids loading heavy 192MB shap package)
+            if hasattr(self.xgb_model, "get_booster"):
+                import xgboost as xgb
+                dmat = xgb.DMatrix(features_df)
+                contribs = self.xgb_model.get_booster().predict(dmat, pred_contribs=True)
+                classes = list(self.label_encoder.classes_)
+                pred_idx = classes.index(predicted_class) if predicted_class in classes else 0
+                if contribs.ndim == 3:
+                    class_shaps = contribs[0, pred_idx, :-1]
+                else:
+                    class_shaps = contribs[0, :-1]
             else:
-                class_shaps = shap_vals[0]
+                explainer = self.get_tree_explainer()
+                if explainer is None:
+                    return {
+                        "top_features": [],
+                        "summary": f"Threat classified as {predicted_class} using ensemble heuristic.",
+                        "method": "heuristic"
+                    }
+                shap_vals = explainer.shap_values(features_df)
+                classes = list(self.label_encoder.classes_)
+                pred_idx = classes.index(predicted_class) if predicted_class in classes else 0
+                if isinstance(shap_vals, np.ndarray) and shap_vals.ndim == 3:
+                    class_shaps = shap_vals[0, :, pred_idx]
+                elif isinstance(shap_vals, list):
+                    class_shaps = shap_vals[pred_idx][0]
+                else:
+                    class_shaps = shap_vals[0]
 
             feature_contributions = []
             for feat, val, s in zip(SELECTED_FEATURES, features_df.iloc[0], class_shaps):
@@ -215,6 +242,7 @@ class ModelInferenceEngine:
 
                 return {
                     "model_name": "xgboost_detector",
+                    "model_status": "loaded",
                     "predicted_class": predicted_class,
                     "confidence": round(confidence, 4),
                     "feature_importance": explanation.get("top_features", []),
@@ -222,9 +250,9 @@ class ModelInferenceEngine:
                     "explanation_method": explanation.get("method", "TreeSHAP")
                 }
             except Exception as e:
-                logger.warning(f"ML feature prediction failed: {e}. Using deterministic heuristic.")
+                logger.warning(f"ML feature prediction failed: {e}. Using deterministic heuristic fallback.")
 
-        # Heuristic fallback if model not loaded or error occurred
+        # Explicit degraded fallback if model not loaded or error occurred (never silently pretend model is loaded)
         heuristic_mapping = {
             "brute_force": ("Brute Force", 0.94),
             "failed_login": ("Brute Force", 0.88),
@@ -241,12 +269,13 @@ class ModelInferenceEngine:
         }
         pred_class, conf = heuristic_mapping.get(event_type, ("BENIGN", 0.80))
         return {
-            "model_name": "xgboost_detector",
+            "model_name": "heuristic_fallback (xgboost_detector unavailable)",
+            "model_status": "degraded_fallback",
             "predicted_class": pred_class,
             "confidence": conf,
             "feature_importance": [],
-            "explanation": f"Classified as {pred_class} via rule signature.",
-            "explanation_method": "heuristic"
+            "explanation": f"Classified as {pred_class} via rule signature fallback because XGBoost model artifact is unavailable.",
+            "explanation_method": "rule_heuristic_fallback"
         }
 
     def predict_anomaly(self, event_dict: Dict[str, Any]) -> Dict[str, Any]:
@@ -274,6 +303,7 @@ class ModelInferenceEngine:
 
                 return {
                     "model_name": "isolation_forest",
+                    "model_status": "loaded",
                     "anomaly_score": round(normalized_score, 4),
                     "is_anomalous": is_anomalous,
                     "deviations": explanation.get("deviations", []),
@@ -281,9 +311,9 @@ class ModelInferenceEngine:
                     "explanation_method": explanation.get("method", "z_score_deviation")
                 }
             except Exception as e:
-                logger.warning(f"Anomaly feature calculation failed: {e}. Using heuristic.")
+                logger.warning(f"Anomaly feature calculation failed: {e}. Using heuristic fallback.")
 
-        # Heuristic fallback
+        # Explicit degraded fallback if model not loaded
         anomaly_scores = {
             "privilege_escalation": 0.92,
             "sensitive_file_access": 0.85,
@@ -298,12 +328,13 @@ class ModelInferenceEngine:
         score = anomaly_scores.get(event_type, 0.20)
         is_anom = score >= 0.60
         return {
-            "model_name": "isolation_forest",
+            "model_name": "heuristic_fallback (isolation_forest unavailable)",
+            "model_status": "degraded_fallback",
             "anomaly_score": score,
             "is_anomalous": is_anom,
             "deviations": [],
-            "explanation": "Heuristic anomaly score assignment." if is_anom else "Normal activity profile.",
-            "explanation_method": "heuristic"
+            "explanation": f"Heuristic anomaly score ({score:.2f}) assigned because Isolation Forest model artifact is unavailable." if is_anom else "Normal activity profile (heuristic fallback).",
+            "explanation_method": "rule_heuristic_fallback"
         }
 
     def predict_all(self, event_dict: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:

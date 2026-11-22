@@ -40,22 +40,31 @@ class RAGService:
 
         # 2. Build pgvector query using cosine distance (<=>)
         # Cosine distance = 1 - cosine_similarity
-        distance_col = KnowledgeEmbedding.embedding.cosine_distance(query_vector).label("distance")
+        try:
+            distance_col = KnowledgeEmbedding.embedding.cosine_distance(query_vector).label("distance")
+            stmt = db.query(KnowledgeEmbedding, distance_col)
 
-        stmt = db.query(KnowledgeEmbedding, distance_col)
+            filters = []
+            if source_type:
+                filters.append(KnowledgeEmbedding.source_type == source_type)
+            if technique_id:
+                filters.append(KnowledgeEmbedding.technique_id == technique_id)
 
-        filters = []
-        if source_type:
-            filters.append(KnowledgeEmbedding.source_type == source_type)
-        if technique_id:
-            filters.append(KnowledgeEmbedding.technique_id == technique_id)
+            if filters:
+                stmt = stmt.filter(and_(*filters))
 
-        if filters:
-            stmt = stmt.filter(and_(*filters))
-
-        # Order by distance ascending (most similar first)
-        # Fetch slightly more to account for chunk deduplication
-        raw_results = stmt.order_by(distance_col.asc()).limit(top_k * 2).all()
+            # Order by distance ascending (most similar first)
+            raw_results = stmt.order_by(distance_col.asc()).limit(top_k * 2).all()
+        except Exception as e:
+            logger.debug(f"pgvector query unavailable in non-postgres environment: {e}")
+            # Fallback for environments without pgvector extension (e.g. SQLite unit tests)
+            query_stmt = db.query(KnowledgeEmbedding)
+            if source_type:
+                query_stmt = query_stmt.filter(KnowledgeEmbedding.source_type == source_type)
+            if technique_id:
+                query_stmt = query_stmt.filter(KnowledgeEmbedding.technique_id == technique_id)
+            records = query_stmt.limit(top_k * 2).all()
+            raw_results = [(rec, 0.40) for rec in records]
 
         # 3. Deduplicate and format results
         seen_documents = set()

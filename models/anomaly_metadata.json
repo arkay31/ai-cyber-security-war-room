@@ -1,0 +1,191 @@
+{
+  "model_name": "Isolation Forest Anomaly Detector",
+  "algorithm": "IsolationForest",
+  "features": [
+    "Destination Port",
+    "Flow Duration",
+    "Total Fwd Packets",
+    "Total Backward Packets",
+    "Total Length of Fwd Packets",
+    "Total Length of Bwd Packets",
+    "Fwd Packet Length Mean",
+    "Bwd Packet Length Mean",
+    "Flow Bytes/s",
+    "Flow Packets/s",
+    "Flow IAT Mean",
+    "Flow IAT Std",
+    "Fwd Header Length",
+    "Bwd Header Length",
+    "Packet Length Mean",
+    "Packet Length Std",
+    "SYN Flag Count",
+    "ACK Flag Count",
+    "Average Packet Size",
+    "Init_Win_bytes_forward"
+  ],
+  "n_estimators": 150,
+  "contamination": 0.08,
+  "splits": {
+    "benign_train_samples": 2163,
+    "validation_samples": 1200,
+    "unseen_test_samples": 1200
+  },
+  "calibration": {
+    "min_score": -0.20422222614269403,
+    "max_score": 0.14164353439868632,
+    "threshold": 0.43
+  },
+  "unseen_test_metrics": {
+    "precision": 0.9118,
+    "recall": 0.9499,
+    "f1_score": 0.9305,
+    "specificity": 0.939,
+    "fpr": 0.061,
+    "fnr": 0.0501,
+    "anomaly_rate": 0.4158
+  },
+  "benign_feature_baseline": {
+    "Destination Port": {
+      "mean": 2003.2788,
+      "std": 2962.3721,
+      "min": 22.0,
+      "max": 8080.0,
+      "p50": 443.0
+    },
+    "Flow Duration": {
+      "mean": 51217.9414,
+      "std": 50527.668,
+      "min": 127.0,
+      "max": 404832.0,
+      "p50": 34783.0
+    },
+    "Total Fwd Packets": {
+      "mean": 9.0203,
+      "std": 2.8404,
+      "min": 2.0,
+      "max": 20.0,
+      "p50": 9.0
+    },
+    "Total Backward Packets": {
+      "mean": 10.8604,
+      "std": 3.1172,
+      "min": 2.0,
+      "max": 22.0,
+      "p50": 11.0
+    },
+    "Total Length of Fwd Packets": {
+      "mean": 1085.8275,
+      "std": 451.1895,
+      "min": 73.8901,
+      "max": 3306.8398,
+      "p50": 1030.5052
+    },
+    "Total Length of Bwd Packets": {
+      "mean": 4909.0093,
+      "std": 1652.0026,
+      "min": 1057.8627,
+      "max": 12159.9756,
+      "p50": 4726.2056
+    },
+    "Fwd Packet Length Mean": {
+      "mean": 120.2158,
+      "std": 30.2522,
+      "min": 14.778,
+      "max": 220.8825,
+      "p50": 120.1044
+    },
+    "Bwd Packet Length Mean": {
+      "mean": 452.4544,
+      "std": 79.4823,
+      "min": 206.427,
+      "max": 723.489,
+      "p50": 452.2852
+    },
+    "Flow Bytes/s": {
+      "mean": 638275.0,
+      "std": 2918202.5,
+      "min": 13418.6533,
+      "max": 65390700.0,
+      "p50": 167736.1562
+    },
+    "Flow Packets/s": {
+      "mean": 2089.0615,
+      "std": 9282.8145,
+      "min": 39.742,
+      "max": 228346.4531,
+      "p50": 553.6263
+    },
+    "Flow IAT Mean": {
+      "mean": 2698.5242,
+      "std": 2788.9998,
+      "min": 4.3793,
+      "max": 25162.2852,
+      "p50": 1806.2727
+    },
+    "Flow IAT Std": {
+      "mean": 1079.4098,
+      "std": 1115.5999,
+      "min": 1.7517,
+      "max": 10064.9141,
+      "p50": 722.5091
+    },
+    "Fwd Header Length": {
+      "mean": 180.4068,
+      "std": 56.8086,
+      "min": 40.0,
+      "max": 400.0,
+      "p50": 180.0
+    },
+    "Bwd Header Length": {
+      "mean": 217.2076,
+      "std": 62.3437,
+      "min": 40.0,
+      "max": 440.0,
+      "p50": 220.0
+    },
+    "Packet Length Mean": {
+      "mean": 301.985,
+      "std": 58.1952,
+      "min": 138.0759,
+      "max": 528.0283,
+      "p50": 298.9569
+    },
+    "Packet Length Std": {
+      "mean": 150.0,
+      "std": 0.0,
+      "min": 150.0,
+      "max": 150.0,
+      "p50": 150.0
+    },
+    "SYN Flag Count": {
+      "mean": 0.7027,
+      "std": 0.4572,
+      "min": 0.0,
+      "max": 1.0,
+      "p50": 1.0
+    },
+    "ACK Flag Count": {
+      "mean": 0.7957,
+      "std": 0.4033,
+      "min": 0.0,
+      "max": 1.0,
+      "p50": 1.0
+    },
+    "Average Packet Size": {
+      "mean": 317.0843,
+      "std": 61.1049,
+      "min": 144.9797,
+      "max": 554.4297,
+      "p50": 313.9048
+    },
+    "Init_Win_bytes_forward": {
+      "mean": 36791.625,
+      "std": 21442.3164,
+      "min": 14600.0,
+      "max": 65535.0,
+      "p50": 29200.0
+    }
+  },
+  "methodology": "BENIGN TRAIN -> FIT, VALIDATION -> CALIBRATE THRESHOLD, UNSEEN TEST -> EVALUATE",
+  "production_benchmark_distinction": "These metrics reflect unsupervised anomaly separation on the CICIDS2017 flow sample. In production SOC deployment, benign traffic drifts over time (e.g. software updates, seasonal user shifts), requiring periodic threshold re-calibration and continuous baseline adaptation."
+}

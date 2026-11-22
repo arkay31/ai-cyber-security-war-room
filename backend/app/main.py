@@ -29,9 +29,11 @@ async def lifespan(app: FastAPI):
         if kb_count == 0:
             logger.info("Knowledge base empty, auto-ingesting standard security playbooks...")
             try:
-                ingest_knowledge()
+                ingest_knowledge(db=db)
             except Exception as e:
                 logger.warning(f"Auto-ingestion encountered notice: {e}")
+        else:
+            logger.info(f"Knowledge base already contains {kb_count} documents/chunks. Auto-ingestion skipped.")
     logger.info("War Room backend startup complete.")
     yield
     logger.info("War Room backend shutting down.")
@@ -76,5 +78,7 @@ def root():
 
 
 if __name__ == "__main__":
+    import os
     import uvicorn
-    uvicorn.run("backend.app.main:app", host=settings.HOST, port=settings.PORT, reload=settings.DEBUG)
+    port = int(os.environ.get("PORT", settings.PORT))
+    uvicorn.run("backend.app.main:app", host="0.0.0.0", port=port, reload=settings.DEBUG)

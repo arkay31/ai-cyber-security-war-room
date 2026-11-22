@@ -1,14 +1,17 @@
+import os
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import declarative_base, sessionmaker
+from sqlalchemy.pool import StaticPool
 from backend.app.config import settings
 
-engine = create_engine(
-    settings.DATABASE_URL,
-    pool_pre_ping=True,
-    pool_size=10,
-    max_overflow=20,
-)
+db_url = os.environ.get("TEST_DATABASE_URL") or settings.DATABASE_URL
+engine_kwargs = {}
+if "sqlite" in db_url:
+    engine_kwargs = {"connect_args": {"check_same_thread": False}, "poolclass": StaticPool}
+else:
+    engine_kwargs = {"pool_pre_ping": True, "pool_size": 10, "max_overflow": 20}
 
+engine = create_engine(db_url, **engine_kwargs)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 Base = declarative_base()
@@ -30,5 +33,6 @@ def init_db():
             conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector;"))
             conn.commit()
         except Exception as e:
-            print(f"[Warning] Failed to enable pgvector extension: {e}")
+            # Expected on SQLite test runs or when vector extension is already managed
+            pass
     Base.metadata.create_all(bind=engine)

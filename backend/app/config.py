@@ -24,6 +24,8 @@ class Settings(BaseSettings):
     GROQ_API_KEY: str | None = None
     GROQ_BASE_URL: str = "https://api.groq.com/openai/v1"
     GROQ_MODEL: str = "llama-3.3-70b-versatile"
+    MEMORY_CONSCIOUS_MODE: bool = False
+    EMBEDDING_PROVIDER: str = "local"  # "local", "openai"
 
     model_config = SettingsConfigDict(
         env_file="backend/.env",

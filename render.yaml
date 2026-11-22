@@ -28,6 +28,10 @@ services:
         value: llama-3.3-70b-versatile
       - key: CORS_ORIGINS
         value: '["https://aegis-warroom.vercel.app","http://localhost:3000"]'
+      - key: MODELS_DIR
+        value: /app/models
+      - key: MEMORY_CONSCIOUS_MODE
+        value: "true"
 
 databases:
   - name: aegis-warroom-db

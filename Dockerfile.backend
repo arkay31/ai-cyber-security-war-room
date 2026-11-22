@@ -1,6 +1,6 @@
 # ============================================================
 # Aegis One - AI Cyber Security War Room Backend Dockerfile
-# Production Multi-Stage Build
+# Production Multi-Stage Build (Optimized for 512MiB RAM)
 # ============================================================
 
 FROM python:3.11-slim AS builder
@@ -14,7 +14,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY backend/requirements.txt .
-RUN pip install --no-cache-dir --user -r requirements.txt
+# Install CPU-only wheels for torch to keep image small and memory lean
+RUN pip install --no-cache-dir --user -r requirements.txt --extra-index-url https://download.pytorch.org/whl/cpu
 
 # Final Runtime Image
 FROM python:3.11-slim AS runner
@@ -31,8 +32,12 @@ COPY --from=builder /root/.local /root/.local
 ENV PATH=/root/.local/bin:$PATH
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
+ENV MODELS_DIR=/app/models
+ENV MEMORY_CONSCIOUS_MODE=true
+ENV OMP_NUM_THREADS=1
+ENV MKL_NUM_THREADS=1
 
-# Copy backend codebase, models, and scripts
+# Copy backend codebase, models, scripts, and precomputed data
 COPY backend/ /app/backend/
 COPY models/ /app/models/
 COPY scripts/ /app/scripts/
@@ -40,7 +45,7 @@ COPY data/ /app/data/
 
 EXPOSE 8000
 
-HEALTHCHECK --interval=10s --timeout=5s --start-period=15s --retries=3 \
-    CMD curl -f http://localhost:8000/api/health || exit 1
+HEALTHCHECK --interval=15s --timeout=5s --start-period=20s --retries=3 \
+    CMD curl -f http://localhost:${PORT:-8000}/api/health || exit 1
 
-CMD ["uvicorn", "backend.app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["sh", "-c", "uvicorn backend.app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
