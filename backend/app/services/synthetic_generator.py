@@ -558,6 +558,178 @@ class SyntheticGenerator:
         return events
 
     @classmethod
+    def create_port_scan_scenario(cls, base_time: datetime.datetime) -> List[Dict[str, Any]]:
+        """Port scanning reconnaissance sweep across 6 service ports."""
+        events = []
+        target_ports = [21, 22, 80, 443, 3306, 8080]
+        for idx, port in enumerate(target_ports):
+            events.append({
+                "timestamp": base_time + datetime.timedelta(seconds=idx * 8),
+                "source_ip": "198.51.100.89",
+                "destination_ip": "10.0.1.25",
+                "source_port": 51230 + idx,
+                "destination_port": port,
+                "protocol": "TCP",
+                "user": "system",
+                "hostname": "gateway-edge01",
+                "event_type": "port_scan",
+                "severity": "high",
+                "raw_data": {
+                    "synthetic": True,
+                    "scenario": "Port Scan Reconnaissance",
+                    "Destination Port": port,
+                    "Flow Duration": 1500,
+                    "SYN Flag Count": 1.0,
+                    "Flow Packets/s": 4200.0,
+                    "Total Fwd Packets": 2,
+                    "Total Backward Packets": 0,
+                    "scan_type": "SYN_STEALTH_SWEEP"
+                }
+            })
+        return events
+
+    @classmethod
+    def create_ddos_scenario(cls, base_time: datetime.datetime) -> List[Dict[str, Any]]:
+        """Volumetric SYN flood denial of service overwhelming port 443."""
+        events = []
+        for idx in range(6):
+            events.append({
+                "timestamp": base_time + datetime.timedelta(seconds=idx * 4),
+                "source_ip": f"203.0.113.{10 + idx}",
+                "destination_ip": "10.0.1.50",
+                "source_port": 40000 + idx,
+                "destination_port": 443,
+                "protocol": "TCP",
+                "user": "www-data",
+                "hostname": "api-gateway01",
+                "event_type": "ddos",
+                "severity": "critical",
+                "raw_data": {
+                    "synthetic": True,
+                    "scenario": "Volumetric SYN Flood DDoS",
+                    "Destination Port": 443,
+                    "Flow Duration": 500,
+                    "Flow Packets/s": 15000.0,
+                    "Flow Bytes/s": 1200000.0,
+                    "Total Fwd Packets": 120,
+                    "SYN Flag Count": 1.0,
+                    "ACK Flag Count": 0.0,
+                    "attack_type": "TCP_SYN_FLOOD"
+                }
+            })
+        return events
+
+    @classmethod
+    def create_brute_force_scenario(cls, base_time: datetime.datetime) -> List[Dict[str, Any]]:
+        """High-frequency SSH credential brute force attack."""
+        events = []
+        for idx in range(5):
+            events.append({
+                "timestamp": base_time + datetime.timedelta(seconds=idx * 12),
+                "source_ip": "198.51.100.177",
+                "destination_ip": "10.0.1.15",
+                "source_port": 49800 + idx,
+                "destination_port": 22,
+                "protocol": "SSH",
+                "user": "admin",
+                "hostname": "finance-srv01",
+                "event_type": "failed_login",
+                "severity": "high",
+                "raw_data": {
+                    "synthetic": True,
+                    "scenario": "SSH Password Spraying",
+                    "Destination Port": 22,
+                    "Flow Duration": 800,
+                    "Total Fwd Packets": 8,
+                    "attempt_number": idx + 1,
+                    "failure_reason": "invalid_credentials"
+                }
+            })
+        return events
+
+    @classmethod
+    def create_privilege_escalation_scenario(cls, base_time: datetime.datetime) -> List[Dict[str, Any]]:
+        """Unauthorized privilege escalation and sensitive file access."""
+        events = [
+            {
+                "timestamp": base_time,
+                "source_ip": "10.0.1.44",
+                "destination_ip": "10.0.1.44",
+                "source_port": 0,
+                "destination_port": 0,
+                "protocol": "LOCAL",
+                "user": "mjackson",
+                "hostname": "corp-wkstn04",
+                "event_type": "privilege_escalation",
+                "severity": "critical",
+                "raw_data": {
+                    "synthetic": True,
+                    "scenario": "Privilege Escalation via Sudo",
+                    "command": "sudo -u root /bin/bash",
+                    "binary": "/usr/bin/sudo",
+                    "anomaly_score": 0.95
+                }
+            },
+            {
+                "timestamp": base_time + datetime.timedelta(seconds=20),
+                "source_ip": "10.0.1.44",
+                "destination_ip": "10.0.1.44",
+                "source_port": 0,
+                "destination_port": 0,
+                "protocol": "LOCAL",
+                "user": "root",
+                "hostname": "corp-wkstn04",
+                "event_type": "sensitive_file_access",
+                "severity": "critical",
+                "raw_data": {
+                    "synthetic": True,
+                    "scenario": "Shadow File Access",
+                    "file_path": "/etc/shadow",
+                    "access_type": "READ"
+                }
+            }
+        ]
+        return events
+
+    @classmethod
+    def seed_specific_scenario(cls, scenario_key: str, db: Session) -> Dict[str, Any]:
+        """Dispatch, ingest, and correlate a specific named demo scenario."""
+        now = datetime.datetime.utcnow()
+
+        scenario_map = {
+            "account_takeover": (cls.create_faculty_demo_scenario, "sec-ops-srv01", "ACCOUNT TAKEOVER & EXFILTRATION"),
+            "port_scan": (cls.create_port_scan_scenario, "gateway-edge01", "NETWORK PORT RECONNAISSANCE"),
+            "ddos": (cls.create_ddos_scenario, "api-gateway01", "VOLUMETRIC SYN FLOOD DDOS"),
+            "brute_force": (cls.create_brute_force_scenario, "finance-srv01", "SSH CREDENTIAL BRUTE FORCE"),
+            "privilege_escalation": (cls.create_privilege_escalation_scenario, "corp-wkstn04", "LOCAL PRIVILEGE ESCALATION"),
+        }
+
+        if scenario_key not in scenario_map:
+            raise ValueError(f"Unknown scenario '{scenario_key}'. Available: {list(scenario_map.keys())}")
+
+        gen_fn, target_host, title = scenario_map[scenario_key]
+        raw_events = gen_fn(now - datetime.timedelta(minutes=3))
+        ingested = cls.ingest_events(db, raw_events)
+
+        latest_incident = (
+            db.query(Incident)
+            .filter(Incident.hostname == target_host)
+            .order_by(desc(Incident.updated_at))
+            .first()
+        )
+
+        return {
+            "status": "success",
+            "scenario_key": scenario_key,
+            "scenario_title": title,
+            "events_count": len(ingested),
+            "incident_id": latest_incident.incident_id if latest_incident else None,
+            "db_id": latest_incident.id if latest_incident else None,
+            "risk_score": latest_incident.risk_score if latest_incident else 0.0,
+            "severity": latest_incident.severity if latest_incident else "HIGH",
+        }
+
+    @classmethod
     def seed_faculty_demo(cls, db: Session) -> Dict[str, Any]:
         """Inject the deterministic 7-event faculty demo attack scenario and return correlated incident."""
         now = datetime.datetime.utcnow()

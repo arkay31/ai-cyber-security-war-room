@@ -1,0 +1,52 @@
+{
+  "model_name": "Isolation Forest Anomaly Detector",
+  "algorithm": "IsolationForest",
+  "hyperparameters": {
+    "n_estimators": 150,
+    "contamination": 0.08,
+    "max_samples": "auto"
+  },
+  "dataset_split": {
+    "benign_train_samples": 2163,
+    "validation_samples": 1200,
+    "unseen_test_samples": 1200,
+    "feature_count": 20
+  },
+  "calibration": {
+    "min_score": -0.20422,
+    "max_score": 0.14164,
+    "decision_threshold": 0.43
+  },
+  "metrics": {
+    "precision": 0.9118,
+    "recall": 0.9499,
+    "f1_score": 0.9305,
+    "specificity": 0.939,
+    "false_positive_rate": 0.061,
+    "false_negative_rate": 0.0501,
+    "true_positives": 455,
+    "true_negatives": 677,
+    "false_positives": 44,
+    "false_negatives": 24
+  },
+  "score_distributions": {
+    "benign_flows": {
+      "mean": 0.2133,
+      "std": 0.121,
+      "median": 0.1995,
+      "p90": 0.3825,
+      "min": -0.0104,
+      "max": 0.6861
+    },
+    "attack_flows": {
+      "mean": 0.7047,
+      "std": 0.1366,
+      "median": 0.7516,
+      "p10": 0.4908,
+      "min": 0.2488,
+      "max": 1.0019
+    }
+  },
+  "methodology": "Trained strictly on benign traffic; calibrated on validation split; evaluated on held-out test split.",
+  "production_benchmark_distinction": "These metrics reflect unsupervised anomaly separation on the CICIDS2017 flow sample. In production SOC deployment, benign traffic drifts over time (e.g. software updates, seasonal user shifts), requiring periodic threshold re-calibration and continuous baseline adaptation."
+}

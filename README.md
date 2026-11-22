@@ -1,71 +1,145 @@
-# AI Cyber Security War Room
+# Aegis One – Autonomous AI Cyber Security War Room
+## Tier-2 Autonomous SOC Analyst, Explainable ML (TreeSHAP), pgvector RAG & Human-in-the-Loop Response
 
-An autonomous, AI-assisted Security Operations Center (SOC) and Incident Investigation platform designed to ingest raw telemetry, detect attacks with supervised machine learning, flag anomalies with unsupervised algorithms, compute transparent risk scores, deterministically correlate multi-stage attack chains, map techniques to the MITRE ATT&CK framework, retrieve curated defense playbooks via vector similarity (pgvector RAG), generate structured investigations via local LLMs (Ollama), execute human-in-the-loop identity verification, and perform analyst-approved, controlled response containment.
+Aegis One is an autonomous, AI-driven Security Operations Center (SOC) investigation platform designed to ingest raw telemetry, detect attacks with supervised machine learning, flag novel anomalies with unsupervised baseline algorithms, compute transparent composite risk scores, deterministically correlate multi-stage kill chains, map techniques to the MITRE ATT&CK framework, retrieve curated defense playbooks via vector similarity (pgvector RAG), generate structured investigations via polymorphic LLMs (Local Ollama / Groq / OpenAI), execute human-in-the-loop identity verification, and perform analyst-approved, controlled response containment.
 
 ---
 
-## Complete End-to-End Pipeline
+## 1. Key System Capabilities
+
+- **Supervised Threat Classification**: Trained on the CICIDS2017 flow feature schema with an **XGBoost Classifier** achieving **99.89% test accuracy** across 6 attack classes (`BENIGN`, `PortScan`, `DDoS`, `DoS`, `Brute Force`, `Bot`).
+- **Unsupervised Anomaly Detection**: **Isolation Forest** fitted strictly on benign enterprise normal baselines, achieving **93.05% F1-score** and **94.99% recall** on unseen test splits with dynamic threshold calibration ($\tau = 0.430$).
+- **Explainable AI (XAI)**:
+  - **TreeSHAP**: Real-time polynomial-time local feature attribution ($\approx 2\text{ ms}$) showing exact feature impacts on threat classification.
+  - **Multivariate Z-Scores**: Identifies flow metrics exceeding the benign enterprise baseline by standard deviations ($z_j$).
+- **PostgreSQL 16 pgvector RAG**: Dense vector semantic retrieval using `sentence-transformers/all-MiniLM-L6-v2` (384 dimensions) with **100% Precision@1** and **1.00 MRR** across official MITRE ATT&CK techniques and SOC playbooks.
+- **Polymorphic LLM Architecture**:
+  - Local-first inference via **Ollama** (`llama3:latest` 8B) on Apple Silicon GPU for offline operation.
+  - Seamless cloud switching to **Groq** (`llama-3.3-70b-versatile`) or **OpenAI** (`gpt-4o-mini`).
+  - Strict Pydantic JSON validation (`AIInvestigationSchema`) with honest fallback (`RULE_BASED` with `LLM_UNAVAILABLE`) if LLM daemon is offline.
+- **Interactive Interviewer Demo Mode**: One-click live injection toolbar in the topbar to test 5 distinct attack scenarios:
+  1. Full Account Takeover & Exfiltration (Faculty Demo)
+  2. SSH Password Spraying (Brute Force)
+  3. SYN Stealth Reconnaissance (Port Scan)
+  4. Volumetric SYN Flood (DDoS)
+  5. Local Privilege Escalation (Sudo Abuse)
+- **Human-in-the-Loop (HITL) Verification**: Out-of-band user challenge portal (`/verify/{challengeId}`) with PIN authentication to confirm or deny suspicious activity before disruptive containment.
+- **Controlled Response Engine**: Dual-key analyst approval workflow for automated host quarantine, edge IP blocking, session revocation, and rate limiting.
+- **Immutable Forensic Audit Trail**: Comprehensive tracking of all machine learning predictions, analyst decisions, and containment executions stored in PostgreSQL.
+
+---
+
+## 2. Complete End-to-End Pipeline
 
 ```
 DETECT
-  │   (Raw Telemetry Ingestion ➔ Normalization ➔ XGBoost Detection ➔ Isolation Forest Anomaly)
+  │   (Raw Telemetry Ingestion ➔ Bounds Validation ➔ XGBoost Detection ➔ Isolation Forest Anomaly)
+  ▼
+EXPLAIN (XAI)
+  │   (Real-Time TreeSHAP Feature Attributions + Baseline Z-Score Feature Deviations)
   ▼
 CORRELATE
   │   (Temporal Sliding Window Correlation across IP, Host, User ➔ Transparent 0–100 Risk Score)
   ▼
 MAP TO MITRE
-  │   (Enterprise ATT&CK Technique Mapping: T1110, T1078, T1068, T1005, T1041, etc.)
+  │   (Enterprise ATT&CK Technique Mapping: T1110, T1078, T1548, T1005, T1048, etc.)
   ▼
-RETRIEVE EVIDENCE
-  │   (pgvector Similarity Search with SentenceTransformers over Official MITRE Corpus & Playbooks)
+RETRIEVE EVIDENCE (RAG)
+  │   (pgvector Cosine Distance Search <=> with SentenceTransformers over MITRE Playbooks)
   ▼
 AI INVESTIGATE
-  │   (Ollama Local Inference via Llama 3 ➔ Structured Investigation JSON + Evidence Citations)
+  │   (Polymorphic LLM Router: Ollama Llama 3 / Groq / OpenAI ➔ Pydantic Validated JSON)
   ▼
 SOC ANALYST REVIEW
-  │   (War Room Dashboard ➔ Chronological Timeline ➔ Telemetry Inspector ➔ MITRE Cards)
+  │   (War Room Dashboard ➔ Chronological Timeline ➔ Telemetry Inspector ➔ TreeSHAP Cards)
   ▼
-USER VERIFICATION WHEN REQUIRED
+USER VERIFICATION (HITL)
   │   (Human-in-the-Loop Portal /verify/<challengeId> ➔ PIN Auth ➔ [CONFIRM] or [DENY])
   ▼
-ANALYST DECISION
-  │   (Review Verification Outcome ➔ Auto-Escalate Risk on Denial ➔ Triage Incident Disposition)
+ANALYST DECISION & CONTAINMENT
+  │   (Review Outcome ➔ Auto-Escalate Risk on Denial ➔ Approve Simulated Host/IP Quarantine)
   ▼
-CONTROLLED RESPONSE
-  │   (Analyst-Approved Simulated Containment: Isolate Host, Block IP, Revoke Session)
-  ▼
-AUDIT TRAIL
-  │   (Immutable PostgreSQL Forensic Audit Logs for Every System and Human Action)
-  ▼
-DASHBOARD / REPORT
-      (Interactive React Flow Attack Topology, Recharts Analytics, Formal Compliance PDF Reports)
+AUDIT TRAIL & TOPOLOGY
+      (Immutable PostgreSQL Forensic Audit Logs ➔ Interactive React Flow Attack Topology)
 ```
 
 ---
 
-## Tech Stack
+## 3. Technology Inventory
 
-### Frontend Application:
-- **Framework**: Next.js 16.3 (App Router, Turbopack)
-- **Language**: TypeScript 5
-- **Styling**: Tailwind CSS 4 (Cybersecurity Dark SOC Theme)
-- **Visualizations**: Recharts (Threat Timeline & Telemetry Distributions)
-- **Topology Graph**: React Flow (Interactive Incident-Entity-MITRE Graph)
-- **Icons**: Lucide React
+| Layer | Technologies & Specifications |
+| :--- | :--- |
+| **Frontend** | Next.js 16.3 (Turbopack, App Router), TypeScript 5, Tailwind CSS 4, Recharts, React Flow, Lucide React |
+| **Backend Core** | FastAPI (Python 3.11), Uvicorn ASGI, SQLAlchemy 2.0, `psycopg[binary]`, Pydantic v2 |
+| **Database** | PostgreSQL 16 with `pgvector` extension (Vector dimensions: 384, Distance: Cosine `<=>`) |
+| **Supervised ML** | XGBoost 2.1 (`XGBClassifier`, multi:softprob, 120 trees, depth 6, test accuracy: 99.89%) |
+| **Anomaly ML** | Scikit-Learn 1.5 (`IsolationForest`, 150 trees, calibrated threshold: 0.430, test F1: 93.05%) |
+| **Explainable AI** | `shap` 0.45 (TreeExplainer / TreeSHAP local attribution) + Empirical Z-Score deviations |
+| **Embeddings & RAG** | SentenceTransformers (`all-MiniLM-L6-v2`, 384-dim dense vectors), PostgreSQL IVFFlat index |
+| **LLM Inference** | Polymorphic: Local Ollama (`llama3:latest` 8B) / Hosted Groq (`llama-3.3-70b`) / OpenAI (`gpt-4o-mini`) |
+| **Quality & Tests** | Pytest (42 automated integration and unit tests passing 100%), ESLint |
 
-### Backend Core:
-- **Framework**: FastAPI (Python 3.11)
-- **ASGI Server**: Uvicorn
-- **ORM & Database**: SQLAlchemy 2.0 with PostgreSQL 16 & `pgvector`
-- **Validation**: Pydantic v2
-- **Testing**: Pytest & FastAPI TestClient
+---
 
-### Machine Learning & AI:
-- **Supervised ML**: XGBoost (`XGBClassifier`) for attack classification (Accuracy: 99.89% on development set)
-- **Anomaly Detection**: Scikit-Learn (`IsolationForest`) for baseline deviation
-- **Vector Embeddings**: SentenceTransformers (`all-MiniLM-L6-v2`, 384 dimensions)
-- **Vector Database**: PostgreSQL 16 with `pgvector` extension
-- **Local LLM Inference**: Ollama (`http://localhost:11434`, `llama3:latest`) with structured JSON enforcement and graceful fallback (`LLM_UNAVAILABLE`)
+## 4. Quickstart Guide (Local Development)
+
+### Prerequisites
+- macOS or Linux
+- Docker Desktop
+- Python 3.11+
+- Node.js 20+
+
+### Step 1: Clone and Configure
+```bash
+git clone https://github.com/your-username/ai-cyber-security-war-room.git
+cd ai-cyber-security-war-room
+cp .env.example .env.local
+cp backend/.env.example backend/.env
+```
+
+### Step 2: One-Command Startup
+```bash
+./start_warroom.sh
+```
+This automated shell script:
+- Verifies `.nosync` protections on `node_modules` and Python `venv` (guarding against macOS iCloud file eviction).
+- Boots the PostgreSQL 16 container (`warroom-postgres`) on port `5432`.
+- Verifies database connectivity and seeds initial knowledge embeddings.
+- Launches the FastAPI backend server on `http://localhost:8000`.
+- Launches the Next.js development server on `http://localhost:3000`.
+
+### Step 3: Access the War Room
+- **War Room Dashboard**: [http://localhost:3000](http://localhost:3000)
+- **FastAPI Interactive Docs**: [http://localhost:8000/docs](http://localhost:8000/docs)
+- **HITL Verification Portal**: [http://localhost:3000/verify](http://localhost:3000/verify)
+- **Interactive Scenarios**: Click **"Interview Demo Scenarios"** in the top navigation bar.
+
+---
+
+## 5. Verification & Test Suite
+
+Run the complete 42-test automated backend test suite:
+```bash
+PYTHONPATH=. backend/venv/bin/pytest backend/tests/ -v
+```
+
+Run frontend production build verification:
+```bash
+npm run build
+npm run lint
+```
+
+---
+
+## 6. Comprehensive Documentation Index
+
+- [`PROJECT_AUDIT_REPORT.md`](PROJECT_AUDIT_REPORT.md): Full technical audit, component inventory, and upgrade history.
+- [`docs/SYSTEM_ARCHITECTURE.md`](docs/SYSTEM_ARCHITECTURE.md): Deep dive into all 12 platform subsystems and data flows.
+- [`docs/ML_PIPELINE.md`](docs/ML_PIPELINE.md): Machine learning specifications, TreeSHAP, and anomaly mathematics.
+- [`docs/RAG_ARCHITECTURE.md`](docs/RAG_ARCHITECTURE.md): pgvector retrieval architecture, chunking, and quantitative evaluation.
+- [`docs/LLM_INTEGRATION.md`](docs/LLM_INTEGRATION.md): Polymorphic provider design, anti-hallucination, and fallback guarantees.
+- [`docs/DEPLOYMENT_GUIDE.md`](docs/DEPLOYMENT_GUIDE.md): Vercel + Render + Docker Compose deployment guide.
+- [`docs/INTERVIEW_PREPARATION.md`](docs/INTERVIEW_PREPARATION.md): Tech Mahindra AI Engineer Fresher interview preparation cheat sheet.
 
 ---
 

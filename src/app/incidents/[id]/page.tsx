@@ -1176,6 +1176,86 @@ export default function IncidentDetailPage({
                       </div>
                     )}
 
+                    {/* TreeSHAP Feature Attributions */}
+                    {investigationResult.feature_attributions && investigationResult.feature_attributions.length > 0 && (
+                      <div className="rounded-lg border border-purple-500/20 bg-purple-500/5 p-3">
+                        <div className="flex items-center justify-between mb-2">
+                          <p className="text-[10px] uppercase font-mono text-purple-300 font-semibold tracking-wider flex items-center gap-1.5">
+                            <BrainCircuit className="h-3.5 w-3.5 text-purple-400" />
+                            <span>Explainable AI — TreeSHAP Feature Attributions</span>
+                          </p>
+                          <span className="text-[9px] font-mono text-purple-400/80 bg-purple-500/10 px-2 py-0.5 rounded border border-purple-500/20">
+                            XGBoost Local Explanations
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-1">
+                          {investigationResult.feature_attributions.map((fa, i) => (
+                            <div
+                              key={i}
+                              className="flex items-center justify-between rounded-md border border-zinc-800 bg-zinc-900/70 px-2.5 py-1.5 text-xs"
+                            >
+                              <div className="flex flex-col">
+                                <span className="font-medium text-zinc-200">{fa.feature}</span>
+                                <span className="text-[10px] text-zinc-500">Value: {fa.value}</span>
+                              </div>
+                              <div className="text-right">
+                                <span
+                                  className={`font-mono text-xs font-semibold ${
+                                    fa.shap_value > 0 ? "text-red-400" : "text-emerald-400"
+                                  }`}
+                                >
+                                  {fa.shap_value > 0 ? `+${fa.shap_value}` : fa.shap_value}
+                                </span>
+                                <span className="block text-[9px] text-zinc-500">
+                                  {fa.shap_value > 0 ? "Threat Indicator" : "Benign Buffer"}
+                                </span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Multivariate Anomaly Deviations */}
+                    {investigationResult.anomaly_deviations && investigationResult.anomaly_deviations.length > 0 && (
+                      <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-3">
+                        <div className="flex items-center justify-between mb-2">
+                          <p className="text-[10px] uppercase font-mono text-amber-300 font-semibold tracking-wider flex items-center gap-1.5">
+                            <Activity className="h-3.5 w-3.5 text-amber-400" />
+                            <span>Isolation Forest — Baseline Z-Score Deviations</span>
+                          </p>
+                          <span className="text-[9px] font-mono text-amber-400/80 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
+                            vs Benign Normal Baseline
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-1">
+                          {investigationResult.anomaly_deviations.map((dev, i) => (
+                            <div
+                              key={i}
+                              className="rounded-md border border-zinc-800 bg-zinc-900/70 p-2 text-xs"
+                            >
+                              <div className="flex items-center justify-between">
+                                <span className="font-medium text-zinc-200 truncate">{dev.feature}</span>
+                                <span
+                                  className={`font-mono text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                                    Math.abs(dev.z_score) >= 2.0
+                                      ? "bg-red-500/20 text-red-400 border border-red-500/30"
+                                      : "bg-zinc-800 text-zinc-300"
+                                  }`}
+                                >
+                                  {dev.z_score > 0 ? `+${dev.z_score}` : dev.z_score}σ
+                                </span>
+                              </div>
+                              <div className="mt-1 flex items-center justify-between text-[10px] text-zinc-400">
+                                <span>Obs: {dev.observed}</span>
+                                <span>Mean: {dev.benign_mean}</span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
                     {/* Prioritized Recommendations */}
                     {investigationResult.prioritized_recommendations && investigationResult.prioritized_recommendations.length > 0 && (
                       <div>

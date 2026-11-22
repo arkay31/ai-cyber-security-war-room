@@ -153,6 +153,19 @@ export interface InvestigationResult {
     content_snippet?: string;
     relevance?: string;
   }>;
+  feature_attributions?: Array<{
+    feature: string;
+    value: number;
+    shap_value: number;
+    impact: string;
+  }>;
+  anomaly_deviations?: Array<{
+    feature: string;
+    observed: number;
+    benign_mean: number;
+    z_score: number;
+    direction: string;
+  }>;
   analyst_warning?: string;
   llm_metrics?: {
     total_duration_sec?: number;
@@ -410,4 +423,35 @@ export const api = {
   },
 
   getReports: () => fetchJson<IncidentReport[]>("/api/reports"),
+
+  getDemoScenarios: () =>
+    fetchJson<
+      Array<{
+        id: string;
+        name: string;
+        category: string;
+        mitre: string[];
+        target: string;
+        description: string;
+        recommended: boolean;
+      }>
+    >("/api/events/demo-scenarios"),
+
+  simulateScenario: (scenarioKey: string) =>
+    fetchJson<{
+      status: string;
+      scenario_key: string;
+      scenario_title: string;
+      events_count: number;
+      incident_id: string;
+      db_id: number;
+      risk_score: number;
+      severity: string;
+    }>(`/api/events/simulate-scenario/${scenarioKey}`, {
+      method: "POST",
+    }),
+
+  getMLEvaluation: () => fetchJson<any>("/api/analytics/ml-model-evaluation"),
+
+  getRAGEvaluation: () => fetchJson<any>("/api/analytics/rag-evaluation"),
 };

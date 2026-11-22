@@ -279,3 +279,48 @@ def get_incident_reports(db: Session = Depends(get_db)):
             "generated_at": datetime.datetime.utcnow().isoformat(),
         })
     return reports
+
+
+@router.get("/analytics/ml-model-evaluation")
+def get_ml_model_evaluation():
+    """
+    Returns verified evaluation reports, confusion matrices, SHAP feature attributions,
+    and anomaly distributions for both the supervised XGBoost Threat Classifier and
+    unsupervised Isolation Forest Anomaly Detector.
+    """
+    import os
+    import json
+    base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+    eval_dir = os.path.join(base_dir, "models", "evaluation")
+
+    def load_eval_json(fname: str) -> Dict[str, Any]:
+        p = os.path.join(eval_dir, fname)
+        if os.path.exists(p):
+            with open(p, "r") as f:
+                return json.load(f)
+        return {}
+
+    return {
+        "status": "ready",
+        "models": {
+            "xgboost": load_eval_json("xgboost_evaluation.json"),
+            "xgboost_feature_importance": load_eval_json("xgboost_feature_importance.json"),
+            "xgboost_confusion_matrix": load_eval_json("xgboost_confusion_matrix.json"),
+            "isolation_forest": load_eval_json("anomaly_evaluation.json")
+        },
+        "evaluation_scope": "CICIDS2017 Stratified Flow Dataset",
+        "production_notice": (
+            "Model metrics are computed against held-out validation and test splits. "
+            "Production SOC deployment integrates human analyst approval and real-time TreeSHAP transparency."
+        )
+    }
+
+
+@router.get("/analytics/rag-evaluation")
+def get_rag_evaluation(db: Session = Depends(get_db)):
+    """
+    Execute quantitative RAG evaluation measuring Precision@K, MRR, and retrieval latency
+    across standard MITRE ATT&CK attack queries against PostgreSQL pgvector.
+    """
+    from backend.app.services.rag_service import rag_service
+    return rag_service.evaluate_rag_retrieval(db)

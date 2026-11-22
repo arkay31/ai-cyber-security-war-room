@@ -48,7 +48,43 @@ LABEL_MAPPING: Dict[str, str] = {
 }
 
 
+FEATURE_BOUNDS: Dict[str, Dict[str, Any]] = {
+    "Destination Port": {"min": 0.0, "max": 65535.0, "default": 80.0, "unit": "port"},
+    "Flow Duration": {"min": 0.0, "max": 120_000_000.0, "default": 1000.0, "unit": "microseconds"},
+    "Total Fwd Packets": {"min": 1.0, "max": 10_000_000.0, "default": 5.0, "unit": "packets"},
+    "Total Backward Packets": {"min": 0.0, "max": 10_000_000.0, "default": 4.0, "unit": "packets"},
+    "Total Length of Fwd Packets": {"min": 0.0, "max": 100_000_000.0, "default": 250.0, "unit": "bytes"},
+    "Total Length of Bwd Packets": {"min": 0.0, "max": 100_000_000.0, "default": 300.0, "unit": "bytes"},
+    "Fwd Packet Length Mean": {"min": 0.0, "max": 65535.0, "default": 50.0, "unit": "bytes"},
+    "Bwd Packet Length Mean": {"min": 0.0, "max": 65535.0, "default": 75.0, "unit": "bytes"},
+    "Flow Bytes/s": {"min": 0.0, "max": 1_000_000_000.0, "default": 550.0, "unit": "bytes/sec"},
+    "Flow Packets/s": {"min": 0.0, "max": 10_000_000.0, "default": 9.0, "unit": "packets/sec"},
+    "Flow IAT Mean": {"min": 0.0, "max": 120_000_000.0, "default": 111.0, "unit": "microseconds"},
+    "Flow IAT Std": {"min": 0.0, "max": 120_000_000.0, "default": 50.0, "unit": "microseconds"},
+    "Fwd Header Length": {"min": 0.0, "max": 10_000_000.0, "default": 100.0, "unit": "bytes"},
+    "Bwd Header Length": {"min": 0.0, "max": 10_000_000.0, "default": 80.0, "unit": "bytes"},
+    "Packet Length Mean": {"min": 0.0, "max": 65535.0, "default": 61.0, "unit": "bytes"},
+    "Packet Length Std": {"min": 0.0, "max": 65535.0, "default": 25.0, "unit": "bytes"},
+    "SYN Flag Count": {"min": 0.0, "max": 1.0, "default": 0.0, "unit": "count"},
+    "ACK Flag Count": {"min": 0.0, "max": 1.0, "default": 1.0, "unit": "count"},
+    "Average Packet Size": {"min": 0.0, "max": 65535.0, "default": 61.0, "unit": "bytes"},
+    "Init_Win_bytes_forward": {"min": -1.0, "max": 65535.0, "default": 29200.0, "unit": "bytes"},
+}
+
+
 class CICIDSPreprocessor:
+    @staticmethod
+    def sanitize_float(val: Any, default: float, min_val: float = 0.0, max_val: float = float("inf")) -> float:
+        """Safely coerce any numeric representation to a bounded float without throwing."""
+        if val is None:
+            return default
+        try:
+            f = float(val)
+            if np.isnan(f) or np.isinf(f):
+                return default
+            return float(np.clip(f, min_val, max_val))
+        except (ValueError, TypeError):
+            return default
     @staticmethod
     def clean_dataframe(df: pd.DataFrame) -> pd.DataFrame:
         """Clean DataFrame: strip headers, drop duplicates, handle inf/nan."""
@@ -86,29 +122,92 @@ class CICIDSPreprocessor:
     def event_to_features(event: Dict[str, Any]) -> np.ndarray:
         """
         Convert an incoming security event JSON dictionary into a feature vector for inference.
-        Uses raw_data fields if present, else derives sensible defaults from event fields.
+        Applies strict bounds validation and sanitization for zero-failure inference.
         """
         raw = event.get("raw_data") or {}
-        dest_port = float(event.get("destination_port") or raw.get("Destination Port") or raw.get("dest_port") or 80)
-        flow_duration = float(raw.get("Flow Duration") or raw.get("flow_duration") or 1000.0)
-        tot_fwd_pkts = float(raw.get("Total Fwd Packets") or raw.get("fwd_packets") or 5.0)
-        tot_bwd_pkts = float(raw.get("Total Backward Packets") or raw.get("bwd_packets") or 4.0)
-        tot_fwd_len = float(raw.get("Total Length of Fwd Packets") or 250.0)
-        tot_bwd_len = float(raw.get("Total Length of Bwd Packets") or 300.0)
-        fwd_len_mean = float(raw.get("Fwd Packet Length Mean") or (tot_fwd_len / max(tot_fwd_pkts, 1)))
-        bwd_len_mean = float(raw.get("Bwd Packet Length Mean") or (tot_bwd_len / max(tot_bwd_pkts, 1)))
-        flow_bytes_s = float(raw.get("Flow Bytes/s") or ((tot_fwd_len + tot_bwd_len) / (max(flow_duration, 1) / 1e6)))
-        flow_pkts_s = float(raw.get("Flow Packets/s") or ((tot_fwd_pkts + tot_bwd_pkts) / (max(flow_duration, 1) / 1e6)))
-        flow_iat_mean = float(raw.get("Flow IAT Mean") or (flow_duration / max(tot_fwd_pkts + tot_bwd_pkts, 1)))
-        flow_iat_std = float(raw.get("Flow IAT Std") or 50.0)
-        fwd_hdr_len = float(raw.get("Fwd Header Length") or (tot_fwd_pkts * 20.0))
-        bwd_hdr_len = float(raw.get("Bwd Header Length") or (tot_bwd_pkts * 20.0))
-        pkt_len_mean = float(raw.get("Packet Length Mean") or ((tot_fwd_len + tot_bwd_len) / max(tot_fwd_pkts + tot_bwd_pkts, 1)))
-        pkt_len_std = float(raw.get("Packet Length Std") or 25.0)
-        syn_count = float(raw.get("SYN Flag Count") or (1.0 if event.get("event_type") in ["port_scan", "failed_login"] else 0.0))
-        ack_count = float(raw.get("ACK Flag Count") or 1.0)
-        avg_pkt_size = float(raw.get("Average Packet Size") or pkt_len_mean)
-        init_win_fwd = float(raw.get("Init_Win_bytes_forward") or 29200.0)
+        sf = CICIDSPreprocessor.sanitize_float
+
+        dest_port = sf(
+            event.get("destination_port") or raw.get("Destination Port") or raw.get("dest_port"),
+            default=80.0, min_val=0.0, max_val=65535.0
+        )
+        flow_duration = sf(
+            raw.get("Flow Duration") or raw.get("flow_duration"),
+            default=1000.0, min_val=0.0, max_val=120_000_000.0
+        )
+        tot_fwd_pkts = sf(
+            raw.get("Total Fwd Packets") or raw.get("fwd_packets"),
+            default=5.0, min_val=1.0, max_val=10_000_000.0
+        )
+        tot_bwd_pkts = sf(
+            raw.get("Total Backward Packets") or raw.get("bwd_packets"),
+            default=4.0, min_val=0.0, max_val=10_000_000.0
+        )
+        tot_fwd_len = sf(
+            raw.get("Total Length of Fwd Packets"),
+            default=250.0, min_val=0.0, max_val=100_000_000.0
+        )
+        tot_bwd_len = sf(
+            raw.get("Total Length of Bwd Packets"),
+            default=300.0, min_val=0.0, max_val=100_000_000.0
+        )
+        fwd_len_mean = sf(
+            raw.get("Fwd Packet Length Mean"),
+            default=(tot_fwd_len / max(tot_fwd_pkts, 1.0)), min_val=0.0, max_val=65535.0
+        )
+        bwd_len_mean = sf(
+            raw.get("Bwd Packet Length Mean"),
+            default=(tot_bwd_len / max(tot_bwd_pkts, 1.0)), min_val=0.0, max_val=65535.0
+        )
+        flow_bytes_s = sf(
+            raw.get("Flow Bytes/s"),
+            default=((tot_fwd_len + tot_bwd_len) / (max(flow_duration, 1.0) / 1e6)), min_val=0.0, max_val=1_000_000_000.0
+        )
+        flow_pkts_s = sf(
+            raw.get("Flow Packets/s"),
+            default=((tot_fwd_pkts + tot_bwd_pkts) / (max(flow_duration, 1.0) / 1e6)), min_val=0.0, max_val=10_000_000.0
+        )
+        flow_iat_mean = sf(
+            raw.get("Flow IAT Mean"),
+            default=(flow_duration / max(tot_fwd_pkts + tot_bwd_pkts, 1.0)), min_val=0.0, max_val=120_000_000.0
+        )
+        flow_iat_std = sf(
+            raw.get("Flow IAT Std"),
+            default=50.0, min_val=0.0, max_val=120_000_000.0
+        )
+        fwd_hdr_len = sf(
+            raw.get("Fwd Header Length"),
+            default=(tot_fwd_pkts * 20.0), min_val=0.0, max_val=10_000_000.0
+        )
+        bwd_hdr_len = sf(
+            raw.get("Bwd Header Length"),
+            default=(tot_bwd_pkts * 20.0), min_val=0.0, max_val=10_000_000.0
+        )
+        pkt_len_mean = sf(
+            raw.get("Packet Length Mean"),
+            default=((tot_fwd_len + tot_bwd_len) / max(tot_fwd_pkts + tot_bwd_pkts, 1.0)), min_val=0.0, max_val=65535.0
+        )
+        pkt_len_std = sf(
+            raw.get("Packet Length Std"),
+            default=25.0, min_val=0.0, max_val=65535.0
+        )
+        syn_default = 1.0 if event.get("event_type") in ["port_scan", "failed_login", "brute_force"] else 0.0
+        syn_count = sf(
+            raw.get("SYN Flag Count"),
+            default=syn_default, min_val=0.0, max_val=1.0
+        )
+        ack_count = sf(
+            raw.get("ACK Flag Count"),
+            default=1.0, min_val=0.0, max_val=1.0
+        )
+        avg_pkt_size = sf(
+            raw.get("Average Packet Size"),
+            default=pkt_len_mean, min_val=0.0, max_val=65535.0
+        )
+        init_win_fwd = sf(
+            raw.get("Init_Win_bytes_forward"),
+            default=29200.0, min_val=-1.0, max_val=65535.0
+        )
 
         feature_vector = np.array([
             dest_port,

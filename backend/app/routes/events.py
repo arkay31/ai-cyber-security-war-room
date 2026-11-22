@@ -67,6 +67,58 @@ def get_events(
     return result
 
 
+@router.get("/events/demo-scenarios")
+def get_demo_scenarios():
+    """Returns catalog of pre-curated attack scenarios for technical interview demonstrations."""
+    return [
+        {
+            "id": "account_takeover",
+            "name": "Full Account Takeover & Exfiltration",
+            "category": "Multi-Stage Kill Chain",
+            "mitre": ["T1110", "T1078", "T1548", "T1005", "T1048"],
+            "target": "sec-ops-srv01 (10.0.1.99)",
+            "description": "7-event lifecycle: SSH brute force -> credential compromise -> sudo abuse -> sensitive shadow read -> C2 beacon.",
+            "recommended": True
+        },
+        {
+            "id": "brute_force",
+            "name": "SSH Password Spraying",
+            "category": "Credential Access",
+            "mitre": ["T1110.001"],
+            "target": "finance-srv01 (10.0.1.15)",
+            "description": "Distributed rapid password attempts against administrative service port 22.",
+            "recommended": False
+        },
+        {
+            "id": "port_scan",
+            "name": "SYN Stealth Reconnaissance",
+            "category": "Discovery",
+            "mitre": ["T1046"],
+            "target": "gateway-edge01 (10.0.1.25)",
+            "description": "Multi-port TCP SYN sweep across internal enterprise network services.",
+            "recommended": False
+        },
+        {
+            "id": "ddos",
+            "name": "Volumetric SYN Flood",
+            "category": "Impact / Availability",
+            "mitre": ["T1498"],
+            "target": "api-gateway01 (10.0.1.50)",
+            "description": "High-volume TCP SYN flooding overwhelming HTTPS ingress bandwidth.",
+            "recommended": False
+        },
+        {
+            "id": "privilege_escalation",
+            "name": "Local Privilege Escalation",
+            "category": "Privilege Escalation",
+            "mitre": ["T1548.003", "T1003"],
+            "target": "corp-wkstn04 (10.0.1.44)",
+            "description": "Unauthorized execution of /usr/bin/sudo spawning root shell and reading /etc/shadow.",
+            "recommended": False
+        }
+    ]
+
+
 @router.get("/events/{event_id}", response_model=EnrichedEventResponse)
 def get_event_by_id(event_id: int, db: Session = Depends(get_db)):
     ev = db.query(SecurityEvent).filter(SecurityEvent.id == event_id).first()
@@ -176,6 +228,19 @@ def seed_synthetic_scenarios(db: Session = Depends(get_db)):
         "status": "success",
         "details": results
     }
+
+
+@router.post("/events/simulate-scenario/{scenario_key}", status_code=201)
+def simulate_named_scenario(scenario_key: str, db: Session = Depends(get_db)):
+    """
+    Trigger a specific named demonstration scenario through the full autonomous SOC pipeline:
+    Telemetry -> XGBoost (TreeSHAP) -> Isolation Forest (Z-Scores) -> Risk Engine -> Incident Correlation.
+    """
+    try:
+        results = SyntheticGenerator.seed_specific_scenario(scenario_key, db)
+        return results
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.post("/events/simulate-demo-attack", status_code=201)

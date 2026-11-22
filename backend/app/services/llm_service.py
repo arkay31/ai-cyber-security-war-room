@@ -21,11 +21,38 @@ class LLMService:
         self,
         base_url: Optional[str] = None,
         model_name: Optional[str] = None,
-        timeout: Optional[float] = None
+        timeout: Optional[float] = None,
+        provider: Optional[str] = None
     ):
+        self.provider_type = (provider or getattr(settings, "LLM_PROVIDER", "ollama")).lower()
         self.base_url = (base_url or settings.OLLAMA_BASE_URL).rstrip("/")
-        self.model_name = model_name or settings.LLM_MODEL
+        self.model_name = model_name or (
+            settings.OPENAI_MODEL if self.provider_type == "openai"
+            else settings.GROQ_MODEL if self.provider_type == "groq"
+            else settings.LLM_MODEL
+        )
         self.timeout = timeout if timeout is not None else getattr(settings, "OLLAMA_TIMEOUT", 120.0)
+
+        # Initialize hosted provider if configured
+        self._hosted_provider = None
+        if self.provider_type == "openai":
+            from backend.app.services.llm_providers.hosted_provider import HostedAPIProvider
+            self._hosted_provider = HostedAPIProvider(
+                provider_name="openai",
+                api_key=settings.OPENAI_API_KEY,
+                base_url=settings.OPENAI_BASE_URL,
+                model=self.model_name,
+                timeout=self.timeout
+            )
+        elif self.provider_type == "groq":
+            from backend.app.services.llm_providers.hosted_provider import HostedAPIProvider
+            self._hosted_provider = HostedAPIProvider(
+                provider_name="groq",
+                api_key=settings.GROQ_API_KEY,
+                base_url=settings.GROQ_BASE_URL,
+                model=self.model_name,
+                timeout=self.timeout
+            )
 
     def get_installed_models(self) -> List[Dict[str, Any]]:
         """Query Ollama daemon for installed models."""
@@ -40,9 +67,12 @@ class LLMService:
 
     def is_model_available(self, model_name: Optional[str] = None) -> bool:
         """
-        Check if a specific model (or self.model_name) is installed in Ollama.
-        Matches exact tag (e.g. 'llama3:latest'), base name ('llama3'), or ':latest' alias.
+        Check if a specific model (or self.model_name) is available.
+        Delegates to hosted provider if configured, else checks Ollama.
         """
+        if self._hosted_provider is not None:
+            return self._hosted_provider.is_model_available(model_name)
+
         target = (model_name or self.model_name).strip()
         models = self.get_installed_models()
         if not models:
@@ -76,9 +106,12 @@ class LLMService:
 
     def check_availability(self) -> bool:
         """
-        Check if local Ollama daemon is reachable AND the configured model is installed.
-        Returns True only when both conditions are met.
+        Check if configured inference service is reachable and model is available.
+        Delegates to hosted provider if active, else probes local Ollama.
         """
+        if self._hosted_provider is not None:
+            return self._hosted_provider.check_availability()
+
         try:
             with httpx.Client(timeout=3.0) as client:
                 res = client.get(f"{self.base_url}/api/tags")
@@ -120,15 +153,18 @@ class LLMService:
         max_tokens: int = 500
     ) -> Dict[str, Any]:
         """
-        Send generation request to Ollama.
-        Returns a dict indicating execution status:
-        - status: "LLM" or "LLM_UNAVAILABLE"
-        - success: bool
-        - response: parsed dict or raw text
-        - error: Optional[str]
-        - latency: float seconds
-        - metrics: Dict with eval counts & tokens/sec
+        Send generation request to configured inference provider (Ollama or hosted API).
+        Returns a dict indicating execution status conforming to War Room contract.
         """
+        if self._hosted_provider is not None:
+            return self._hosted_provider.generate(
+                prompt=prompt,
+                system_prompt=system_prompt,
+                require_json=require_json,
+                temperature=temperature,
+                max_tokens=max_tokens
+            )
+
         target_model = self.resolve_model_name()
         start_time = time.perf_counter()
 

@@ -64,8 +64,8 @@ else
     echo -e "${YELLOW}  To enable full LLM inference, run: 'ollama serve' in another terminal.${NC}"
 fi
 
-# 3. Check macOS iCloud node_modules.nosync link
-echo -e "\n${YELLOW}[3/5] Verifying Frontend Dependencies & iCloud Protection...${NC}"
+# 3. Check macOS iCloud node_modules.nosync & backend/venv.nosync links
+echo -e "\n${YELLOW}[3/5] Verifying Dependencies & iCloud Protection...${NC}"
 if [ -d "node_modules.nosync" ] && [ -L "node_modules" ]; then
     echo -e "${GREEN}✓ node_modules is shielded from iCloud eviction via .nosync symlink.${NC}"
 elif [ -d "node_modules" ] && [ ! -L "node_modules" ]; then
@@ -73,6 +73,15 @@ elif [ -d "node_modules" ] && [ ! -L "node_modules" ]; then
     mv node_modules node_modules.nosync
     ln -s node_modules.nosync node_modules
     echo -e "${GREEN}✓ Converted node_modules to .nosync symlink.${NC}"
+fi
+
+if [ -d "backend/venv.nosync" ] && [ -L "backend/venv" ]; then
+    echo -e "${GREEN}✓ backend/venv is shielded from iCloud eviction via .nosync symlink.${NC}"
+elif [ -d "backend/venv" ] && [ ! -L "backend/venv" ]; then
+    echo -e "${YELLOW}Shielding backend/venv with .nosync convention...${NC}"
+    mv backend/venv backend/venv.nosync
+    ln -s venv.nosync backend/venv
+    echo -e "${GREEN}✓ Converted backend/venv to .nosync symlink.${NC}"
 fi
 
 # Cleanup any stale dev locks

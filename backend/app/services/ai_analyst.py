@@ -29,6 +29,8 @@ from backend.app.models.audit_log import AuditLog
 from backend.app.services.rag_service import rag_service
 from backend.app.services.llm_service import llm_service
 from backend.app.services.correlation_engine import correlation_engine
+from backend.app.schemas.incident import AIInvestigationSchema
+from backend.app.ml.inference import inference_engine
 
 logger = logging.getLogger(__name__)
 
@@ -52,9 +54,12 @@ class AIAnalystService:
         ml_detections: List[Detection],
         ml_anomalies: List[Anomaly],
         rag_evidence: List[Dict[str, Any]],
+        feature_attributions: Optional[List[Dict[str, Any]]] = None,
+        anomaly_deviations: Optional[List[Dict[str, Any]]] = None,
     ) -> str:
         """
         Build an information-dense, concise context prompt for the local LLM.
+        Injects mathematically verified TreeSHAP feature attributions and anomaly deviations.
         """
         lines = [
             f"=== INCIDENT: {incident.incident_id} ===",
@@ -73,6 +78,16 @@ class AIAnalystService:
             max_score = max((a.anomaly_score for a in ml_anomalies if a.anomaly_score is not None), default=0.0)
             lines.append(f"- Isolation Forest: {anom_count}/{len(ml_anomalies)} anomalies (Peak Score: {max_score:.2f})")
 
+        if feature_attributions:
+            lines.append("- TreeSHAP Feature Attributions:")
+            for fa in feature_attributions[:4]:
+                lines.append(f"  * {fa.get('feature')}: {fa.get('value')} (SHAP: {fa.get('shap_value')}) -> {fa.get('impact')}")
+
+        if anomaly_deviations:
+            lines.append("- Baseline Anomaly Deviations (Z-Scores):")
+            for dev in anomaly_deviations[:3]:
+                lines.append(f"  * {dev.get('feature')}: observed={dev.get('observed')}, benign_mean={dev.get('benign_mean')} ({dev.get('z_score')} std {dev.get('direction')})")
+
         lines.append("")
         if mitre_techs:
             lines.append("=== MITRE ATT&CK TECHNIQUES ===")
@@ -88,15 +103,19 @@ class AIAnalystService:
         lines.append("=== RETRIEVED PGVECTOR PLAYBOOKS & EVIDENCE ===")
         if rag_evidence:
             for ev in rag_evidence[:4]:
-                lines.append(f"- [{ev.get('document_id')}] {ev.get('title')}: {ev.get('content', '')[:350]}")
+                sim = ev.get('similarity_score', 0.0)
+                warning_note = " (LOW RELEVANCE - USE CAUTION)" if ev.get("is_low_relevance") else ""
+                lines.append(f"- [{ev.get('document_id')}] (sim: {sim:.2f}{warning_note}) {ev.get('title')}: {ev.get('content', '')[:300]}")
         else:
             lines.append("- (No semantic playbooks retrieved for this incident telemetry)")
 
         lines.append("""
-=== TASK ===
-Analyze this security incident as an expert SOC Analyst.
-You MUST output ONLY a valid JSON object matching this schema.
-Keep each recommendation and investigation step concise (under 25 words):
+=== ANTI-HALLUCINATION DIRECTIVES ===
+1. Base all findings strictly on the verified telemetry, TreeSHAP attributions, and retrieved playbooks above.
+2. DO NOT invent IP addresses, users, or exploit techniques not evidenced in the context.
+3. If playbooks are marked LOW RELEVANCE, note that they are general guidelines and not verified evidence.
+4. If activity is inconclusive, explicitly state 'Suspicious activity observed; human verification required'.
+5. Output ONLY a valid JSON object matching this schema (under 25 words per step/recommendation):
 {
   "incident_summary": "Cautious summary of observed actions and impact",
   "observed_evidence": ["Fact 1", "Fact 2"],
@@ -168,11 +187,33 @@ Keep each recommendation and investigation step concise (under 25 words):
             top_k=5
         )
 
-        # 5. Check LLM availability and execute inference
-        is_ollama_ready = self.llm.check_availability()
+        # 5. Extract local TreeSHAP explanations and Anomaly Deviations
+        shap_features = []
+        anomaly_deviations = []
+        if events:
+            primary_ev = events[-1]
+            ev_dict = {
+                "event_type": primary_ev.event_type,
+                "source_ip": primary_ev.source_ip,
+                "destination_port": primary_ev.destination_port,
+                "raw_data": primary_ev.raw_data or {}
+            }
+            try:
+                top_det = max(ml_detections, key=lambda d: d.confidence or 0.0) if ml_detections else None
+                pred_cls = top_det.predicted_class if top_det else "Brute Force"
+                threat_expl = inference_engine.explain_threat(ev_dict, pred_cls)
+                shap_features = threat_expl.get("top_features", [])
+
+                anom_expl = inference_engine.explain_anomaly(ev_dict, True, 0.75)
+                anomaly_deviations = anom_expl.get("deviations", [])
+            except Exception as e:
+                logger.warning(f"Could not compute local SHAP for incident {incident.incident_id}: {e}")
+
+        # 6. Check LLM availability and execute inference
+        is_llm_ready = self.llm.check_availability()
         llm_result = None
 
-        if is_ollama_ready:
+        if is_llm_ready:
             prompt = self.assemble_prompt(
                 incident=incident,
                 events=events,
@@ -181,36 +222,38 @@ Keep each recommendation and investigation step concise (under 25 words):
                 ml_detections=ml_detections,
                 ml_anomalies=ml_anomalies,
                 rag_evidence=rag_evidence,
+                feature_attributions=shap_features,
+                anomaly_deviations=anomaly_deviations,
             )
             system_msg = "You are a professional Tier-2 SOC Security Analyst assisting in incident triage and response."
             llm_result = self.llm.generate(prompt=prompt, system_prompt=system_msg, require_json=True)
         else:
             logger.warning(
-                f"Ollama daemon or model '{self.llm.model_name}' unavailable at {self.llm.base_url}. Triggering RULE_BASED fallback."
+                f"Configured LLM inference service or model '{self.llm.model_name}' unavailable. Triggering RULE_BASED fallback."
             )
 
-        # 6. Build response according to execution outcome
+        # 7. Build response according to execution outcome
         if llm_result and llm_result.get("success") and isinstance(llm_result.get("data"), dict):
-            # Genuine LLM + RAG response
-            parsed = llm_result["data"]
+            # Genuine LLM + RAG response validated via strict Pydantic schema
+            validated = AIInvestigationSchema.sanitize_raw_llm_dict(llm_result["data"])
             analysis_mode = "LLM_RAG" if rag_evidence else "LLM"
             llm_status = analysis_mode
-            llm_model = llm_result.get("model", "llama3")
+            llm_model = llm_result.get("model", self.llm.model_name)
             llm_metrics = llm_result.get("metrics", {})
             llm_error = None
 
-            inc_summary = parsed.get("incident_summary") or f"Analysis for {incident.incident_id}"
-            obs_evidence = parsed.get("observed_evidence", [f"{len(events)} correlated telemetry events analyzed."])
-            likely_pattern = parsed.get("likely_attack_pattern") or incident.title
-            m_techs = parsed.get("mitre_techniques") if parsed.get("mitre_techniques") else [
+            inc_summary = validated.incident_summary
+            obs_evidence = validated.observed_evidence if validated.observed_evidence else [f"{len(events)} correlated telemetry events analyzed."]
+            likely_pattern = validated.likely_attack_pattern or incident.title
+            m_techs = validated.mitre_techniques if validated.mitre_techniques else [
                 {"technique_id": t.technique_id, "name": t.name, "tactic": t.tactic} for t in mitre_techs
             ]
-            root_cause = parsed.get("root_cause_hypothesis", "Initial unauthorized access vector under investigation.")
-            conf = float(parsed.get("confidence", 0.88))
-            invest_steps = parsed.get("investigation_steps", [])
-            prioritized_recs = parsed.get("prioritized_recommendations", [])
-            
-            # Format evidence references with full metadata without fabrication
+            root_cause = validated.root_cause_hypothesis or "Initial unauthorized access vector under investigation."
+            conf = validated.confidence
+            invest_steps = validated.investigation_steps
+            prioritized_recs = validated.prioritized_recommendations
+            warning = validated.analyst_warning or "Verify user intent via User Verification challenge before executing disruptive containment."
+
             if rag_evidence:
                 evidence_refs = [
                     {
@@ -225,8 +268,6 @@ Keep each recommendation and investigation step concise (under 25 words):
                 ]
             else:
                 evidence_refs = []
-
-            warning = parsed.get("analyst_warning", "Verify user intent via User Verification challenge before executing disruptive containment.")
 
         else:
             # Fallback to Rule-Based Analyst (Explicitly labeled RULE_BASED and LLM_UNAVAILABLE)
@@ -345,6 +386,8 @@ Keep each recommendation and investigation step concise (under 25 words):
             "investigation_steps": invest_steps,
             "prioritized_recommendations": prioritized_recs,
             "evidence_references": evidence_refs,
+            "feature_attributions": shap_features,
+            "anomaly_deviations": anomaly_deviations,
             "analyst_warning": warning,
             "llm_metrics": llm_metrics,
             "llm_error": llm_error,

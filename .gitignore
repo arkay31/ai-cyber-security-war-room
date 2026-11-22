@@ -50,7 +50,11 @@ __pycache__/
 *$py.class
 *.so
 .Python
-backend/venv/
+backend/venv
+backend/venv.nosync
+*.nosync
+*.nosync/
+venv
 venv/
 ENV/
 env/

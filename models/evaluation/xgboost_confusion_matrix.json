@@ -1,0 +1,61 @@
+{
+  "classes": [
+    "BENIGN",
+    "Bot",
+    "Brute Force",
+    "DDoS",
+    "DoS",
+    "PortScan"
+  ],
+  "matrix": [
+    [
+      541,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    [
+      0,
+      38,
+      0,
+      0,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      50,
+      0,
+      0,
+      0
+    ],
+    [
+      1,
+      0,
+      0,
+      103,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      0,
+      0,
+      72,
+      0
+    ],
+    [
+      0,
+      0,
+      0,
+      0,
+      0,
+      95
+    ]
+  ],
+  "description": "Rows represent Ground Truth labels; Columns represent XGBoost Predicted labels."
+}

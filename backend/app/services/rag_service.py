@@ -80,6 +80,7 @@ class RAGService:
                 "technique_id": record.technique_id,
                 "chunk_index": record.chunk_index,
                 "similarity_score": round(similarity, 4),
+                "is_low_relevance": bool(similarity < 0.45),
                 "content": record.content,
             })
 
@@ -87,6 +88,110 @@ class RAGService:
                 break
 
         return evidence_list
+
+    def evaluate_rag_retrieval(self, db: Session) -> Dict[str, Any]:
+        """
+        Evaluate quantitative RAG retrieval metrics on MITRE ATT&CK knowledge base.
+        Calculates Precision@1, Precision@3, Precision@5, Mean Reciprocal Rank (MRR),
+        and average retrieval latency.
+        """
+        import time
+
+        test_cases = [
+            {
+                "query": "SSH brute force automated credential guessing on port 22",
+                "expected_techniques": ["T1110", "T1110.001"],
+                "category": "Credential Access"
+            },
+            {
+                "query": "Network service scanning and open port discovery reconnaissance",
+                "expected_techniques": ["T1046"],
+                "category": "Discovery"
+            },
+            {
+                "query": "High volume SYN flood network denial of service",
+                "expected_techniques": ["T1498", "T1499"],
+                "category": "Impact"
+            },
+            {
+                "query": "Elevated privileges sudoers modification root execution",
+                "expected_techniques": ["T1548", "T1068"],
+                "category": "Privilege Escalation"
+            },
+            {
+                "query": "Sensitive data exfiltration outbound network transfer",
+                "expected_techniques": ["T1048", "T1041"],
+                "category": "Exfiltration"
+            }
+        ]
+
+        latencies = []
+        hits_at_1 = 0
+        hits_at_3 = 0
+        hits_at_5 = 0
+        reciprocal_ranks = []
+        query_evaluations = []
+
+        for case in test_cases:
+            t0 = time.perf_counter()
+            retrieved = self.retrieve_relevant_evidence(case["query"], db, top_k=5, min_similarity=0.10)
+            elapsed_ms = round((time.perf_counter() - t0) * 1000, 2)
+            latencies.append(elapsed_ms)
+
+            retrieved_techs = [doc.get("technique_id") for doc in retrieved if doc.get("technique_id")]
+            expected = set(case["expected_techniques"])
+
+            # Check hits
+            hit_1 = bool(retrieved_techs and retrieved_techs[0] in expected)
+            hit_3 = any(t in expected for t in retrieved_techs[:3])
+            hit_5 = any(t in expected for t in retrieved_techs[:5])
+
+            if hit_1:
+                hits_at_1 += 1
+            if hit_3:
+                hits_at_3 += 1
+            if hit_5:
+                hits_at_5 += 1
+
+            # Reciprocal rank
+            rr = 0.0
+            for rank_idx, t in enumerate(retrieved_techs, start=1):
+                if t in expected:
+                    rr = 1.0 / rank_idx
+                    break
+            reciprocal_ranks.append(rr)
+
+            query_evaluations.append({
+                "query": case["query"],
+                "expected_techniques": list(expected),
+                "retrieved_top_technique": retrieved_techs[0] if retrieved_techs else None,
+                "top_similarity": retrieved[0].get("similarity_score") if retrieved else 0.0,
+                "latency_ms": elapsed_ms,
+                "hit_at_1": hit_1,
+                "hit_at_3": hit_3
+            })
+
+        total = len(test_cases)
+        return {
+            "model_name": self.embedding_service.model_name,
+            "embedding_dimension": 384,
+            "total_benchmark_queries": total,
+            "metrics": {
+                "precision_at_1": round(hits_at_1 / total, 4),
+                "precision_at_3": round(hits_at_3 / total, 4),
+                "precision_at_5": round(hits_at_5 / total, 4),
+                "mean_reciprocal_rank": round(sum(reciprocal_ranks) / total, 4),
+                "avg_latency_ms": round(sum(latencies) / total, 2),
+                "min_latency_ms": min(latencies) if latencies else 0.0,
+                "max_latency_ms": max(latencies) if latencies else 0.0,
+            },
+            "queries": query_evaluations,
+            "storage_engine": "PostgreSQL 16 + pgvector (HNSW/IVFFlat indexable, L2/Cosine distance)",
+            "evaluation_notice": (
+                "RAG retrieval evaluation tests semantic technique matching across standard MITRE ATT&CK tactics. "
+                "Retrieval latency includes 384-dimensional dense vector encoding via SentenceTransformers and pgvector query."
+            )
+        }
 
     def retrieve_for_incident(
         self,

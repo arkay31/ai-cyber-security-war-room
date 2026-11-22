@@ -1,0 +1,174 @@
+{
+  "gain_importance": [
+    {
+      "feature": "Total Fwd Packets",
+      "importance": 0.17041
+    },
+    {
+      "feature": "Packet Length Std",
+      "importance": 0.15675
+    },
+    {
+      "feature": "Bwd Packet Length Mean",
+      "importance": 0.1283
+    },
+    {
+      "feature": "Init_Win_bytes_forward",
+      "importance": 0.1242
+    },
+    {
+      "feature": "Packet Length Mean",
+      "importance": 0.11119
+    },
+    {
+      "feature": "Flow Duration",
+      "importance": 0.10765
+    },
+    {
+      "feature": "Total Length of Bwd Packets",
+      "importance": 0.0693
+    },
+    {
+      "feature": "Fwd Header Length",
+      "importance": 0.06616
+    },
+    {
+      "feature": "Average Packet Size",
+      "importance": 0.03479
+    },
+    {
+      "feature": "Total Backward Packets",
+      "importance": 0.0137
+    },
+    {
+      "feature": "Total Length of Fwd Packets",
+      "importance": 0.01249
+    },
+    {
+      "feature": "SYN Flag Count",
+      "importance": 0.00353
+    },
+    {
+      "feature": "Flow IAT Mean",
+      "importance": 0.00038
+    },
+    {
+      "feature": "Fwd Packet Length Mean",
+      "importance": 0.00036
+    },
+    {
+      "feature": "Flow IAT Std",
+      "importance": 0.00032
+    },
+    {
+      "feature": "Bwd Header Length",
+      "importance": 0.00027
+    },
+    {
+      "feature": "Destination Port",
+      "importance": 9e-05
+    },
+    {
+      "feature": "Flow Packets/s",
+      "importance": 7e-05
+    },
+    {
+      "feature": "Flow Bytes/s",
+      "importance": 6e-05
+    },
+    {
+      "feature": "ACK Flag Count",
+      "importance": 0.0
+    }
+  ],
+  "shap_importance": [
+    {
+      "feature": "Packet Length Std",
+      "mean_abs_shap": 1.55528
+    },
+    {
+      "feature": "Bwd Packet Length Mean",
+      "mean_abs_shap": 0.66148
+    },
+    {
+      "feature": "Total Fwd Packets",
+      "mean_abs_shap": 0.60736
+    },
+    {
+      "feature": "Init_Win_bytes_forward",
+      "mean_abs_shap": 0.36816
+    },
+    {
+      "feature": "Packet Length Mean",
+      "mean_abs_shap": 0.2073
+    },
+    {
+      "feature": "Total Length of Fwd Packets",
+      "mean_abs_shap": 0.15832
+    },
+    {
+      "feature": "Fwd Header Length",
+      "mean_abs_shap": 0.10935
+    },
+    {
+      "feature": "Flow Duration",
+      "mean_abs_shap": 0.10544
+    },
+    {
+      "feature": "Total Length of Bwd Packets",
+      "mean_abs_shap": 0.06487
+    },
+    {
+      "feature": "Average Packet Size",
+      "mean_abs_shap": 0.06397
+    },
+    {
+      "feature": "Flow IAT Std",
+      "mean_abs_shap": 0.03332
+    },
+    {
+      "feature": "Flow IAT Mean",
+      "mean_abs_shap": 0.01717
+    },
+    {
+      "feature": "Fwd Packet Length Mean",
+      "mean_abs_shap": 0.01597
+    },
+    {
+      "feature": "Bwd Header Length",
+      "mean_abs_shap": 0.01385
+    },
+    {
+      "feature": "Total Backward Packets",
+      "mean_abs_shap": 0.01138
+    },
+    {
+      "feature": "Destination Port",
+      "mean_abs_shap": 0.00445
+    },
+    {
+      "feature": "Flow Packets/s",
+      "mean_abs_shap": 0.00252
+    },
+    {
+      "feature": "Flow Bytes/s",
+      "mean_abs_shap": 0.00122
+    },
+    {
+      "feature": "SYN Flag Count",
+      "mean_abs_shap": 0.00077
+    },
+    {
+      "feature": "ACK Flag Count",
+      "mean_abs_shap": 0.0
+    }
+  ],
+  "top_features": [
+    "Total Fwd Packets",
+    "Packet Length Std",
+    "Bwd Packet Length Mean",
+    "Init_Win_bytes_forward",
+    "Packet Length Mean"
+  ],
+  "methodology": "TreeSHAP (TreeExplainer) and Gini impurity reduction across multi-class trees."
+}
