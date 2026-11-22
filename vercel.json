@@ -5,7 +5,7 @@
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "https://aegis-warroom-backend.onrender.com/api/:path*"
+      "destination": "https://ai-cyber-security-war-room.onrender.com/api/:path*"
     }
   ]
 }
